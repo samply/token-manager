@@ -15,6 +15,10 @@ use serde_json;
 use uuid::Uuid;
 use tokio::time::{sleep, Duration};
 use log::error;
+use lettre::message::header::ContentType;
+use lettre::transport::smtp::authentication::Credentials;
+use lettre::{Message, SmtpTransport, Transport};
+
 
 const MAX_RETRIES: u32 = 3;
 
@@ -107,11 +111,31 @@ async fn call_opal_api(query: Query<QueryParams>, body: String) -> impl IntoResp
         projects: list_projects.clone(),
     };
 
-    let client = reqwest::Client::new();
     
+    let client = reqwest::Client::new();    
     let r_script = generate_r_script(token, list_projects.clone(), body.clone());
-
     let mut retries = 0;
+
+    let from_email = env::var("FROM_EMAIL").expect("FROM_EMAIL must be set");
+    let pwd_email = env::var("PWD_EMAIL").expect("PWD_EMAIL must be set");
+
+    let email_builder = Message::builder()
+    .from(from_email.parse().unwrap())
+    .to(query.email.clone().parse().unwrap())
+    .subject("DataSHIELD Token Creation")
+    .header(ContentType::TEXT_PLAIN)
+    .body(r_script.clone())
+    .unwrap();
+
+    // Sets the credentials for mailserver
+    let creds = Credentials::new(from_email.to_owned(), pwd_email.to_owned());
+
+    // Open a remote connection to gmail
+    let mailer = SmtpTransport::relay("smtp.gmail.com")
+    .unwrap()
+    .credentials(creds)
+    .build();
+
 
     loop {
         match client.post(opal_api_url.clone()).json(&request).send().await {
@@ -126,6 +150,13 @@ async fn call_opal_api(query: Query<QueryParams>, body: String) -> impl IntoResp
                 };
                 let response_json = serde_json::to_string(&response_data).unwrap();
                 (hyper::StatusCode::OK, response_json).into_response();
+               
+                // Send the email
+                match mailer.send(&email_builder) {
+                    Ok(_) => println!("Email sent successfully!"),
+                    Err(e) => panic!("Could not send email: {e:?}"),
+                }
+
                 break;
             } else {
                 let status = resp.status();
