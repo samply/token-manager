@@ -29,3 +29,4 @@ dev/pki/*
 !dev/pki/pki
 Cargo.lock
 .vscode/*
+.idea/*
