@@ -7,5 +7,4 @@ RUN cargo build --release
 # Create Final image
 FROM gcr.io/distroless/cc-debian12
 COPY --from=builder /workdir/target/release/token-manager /usr/local/bin/
-EXPOSE 3030
 ENTRYPOINT ["/usr/local/bin/token-manager"]

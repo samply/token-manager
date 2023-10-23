@@ -9,6 +9,7 @@ use axum::Router;
 use tracing::{info, Level};
 use tracing_subscriber::{fmt::SubscriberBuilder, EnvFilter};
 use handlers::call_opal_api;
+use crate::config::CONFIG;
 
 #[tokio::main]
 async fn main() {
@@ -20,7 +21,7 @@ async fn main() {
 
     let app = Router::new().route("/api/token", axum::routing::post(call_opal_api));
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3030));
+    let addr = SocketAddr::new(CONFIG.host, CONFIG.port);
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await

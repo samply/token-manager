@@ -32,7 +32,7 @@ pub fn generate_r_script(token: Uuid, projects: Vec<String>, body: String) -> St
         logindata <- builder$build()
         connections <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = "D")
         
-        "{}"
+        {}
         "#,
         token,
         projects.join(","), body
