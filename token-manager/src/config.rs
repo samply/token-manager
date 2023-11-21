@@ -19,5 +19,8 @@ pub struct Config {
     pub host: IpAddr,
 
     #[clap(long, env)]
-    pub port: u16
+    pub port: u16,
+
+    #[clap(long, env)]
+    pub token_manager_db_url: String,
 }

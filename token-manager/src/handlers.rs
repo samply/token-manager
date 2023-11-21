@@ -1,34 +1,29 @@
-use axum::extract::Query;
-use axum::response::IntoResponse;
 use log::error;
 use uuid::Uuid;
+use tracing::{info, Level};
 use tokio::time::{sleep, Duration};
-use crate::utils::{send_email, split_and_trim, generate_token};
+use crate::utils::{split_and_trim, generate_token};
 use crate::config::CONFIG;
-use crate::models::{HttpParams, OpalRequest};
+use crate::models::{HttpParams, OpalRequest, ProjectRequest};
+use std::sync::Arc;
+use axum::{
+    extract::{Path, Query, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 
 const MAX_RETRIES: u32 = 3;
 
-pub async fn call_opal_api(query: Query<HttpParams>, body: String) -> impl IntoResponse {
-    let token = generate_token();
-    call_opal_api_with_retries(query, token, body, MAX_RETRIES).await
-}
-
-async fn call_opal_api_with_retries(
+pub async fn save_token_in_opal_app(
     query: Query<HttpParams>,
     token: Uuid,
-    body: String,
-    retries: u32,
 ) -> impl IntoResponse {
-    let mut retries_remaining = retries;
-    let mut  response: Result<reqwest::Response, reqwest::Error> = make_opal_request(&query, &token).await;
+    let mut retries_remaining = MAX_RETRIES;
+    let mut  response: Result<reqwest::Response, reqwest::Error> = post_opal_request(&query, &token).await;
 
     while retries_remaining > 0 {
         if response.is_ok() && response.as_ref().unwrap().status().is_success() {
-            match send_email(&query, &token, &split_and_trim(&query.projects), &body) {
-                Ok(_) => println!("Email sent successfully!"),
-                Err(e) => panic!("Could not send email: {:?}", e),
-            }
             return (hyper::StatusCode::OK).into_response();
         }
         else if response.is_ok() && response.as_ref().unwrap().status().is_client_error() {
@@ -46,7 +41,7 @@ async fn call_opal_api_with_retries(
             sleep(Duration::from_millis(5000)).await; // Add a delay before retrying
         }
         retries_remaining -= 1;
-        response = make_opal_request(&query, &token).await;
+        response = post_opal_request(&query, &token).await;
     }
 
     error!("Request error: {:?}", response.as_ref().unwrap());
@@ -54,12 +49,16 @@ async fn call_opal_api_with_retries(
 }
 
 
-async fn make_opal_request(query: &Query<HttpParams>, token: &Uuid) -> reqwest::Result<reqwest::Response> {
+async fn post_opal_request(query: &Query<HttpParams>, token: &Uuid) -> reqwest::Result<reqwest::Response> {
     let api_url = CONFIG.opal_api_url.clone();
     
     // Splitting from comma-separated string to a Vec<String>
     let bridgeheads = split_and_trim(&query.bridgehead_ids);
     let list_projects = split_and_trim(&query.projects);
+
+    if !list_projects.is_empty() {
+        create_project_if_not_exist(list_projects.clone()).await?;
+    }
 
     let request = OpalRequest {
         name: query.email.clone(),
@@ -68,5 +67,51 @@ async fn make_opal_request(query: &Query<HttpParams>, token: &Uuid) -> reqwest::
     };
 
     let client = reqwest::Client::new();
-    client.post(api_url).json(&request).send().await
+    client.post(api_url + "/token").json(&request).send().await
+}
+
+async fn create_project_if_not_exist(projects: Vec<String>) -> reqwest::Result<Vec<reqwest::Response>> {
+    let client = reqwest::Client::new();
+
+    let mut responses = Vec::new();
+
+    for project in projects {
+        let response = client.get(format!("{}/project/{}", CONFIG.opal_api_url.clone(), project))
+            .send()
+            .await?;
+
+            let status = response.status();    
+            info!("Status of Project {}: {}", project, status.clone());
+
+            match status {
+                reqwest::StatusCode::OK => {
+                    info!("Project Exist!");
+                }
+                reqwest::StatusCode::NOT_FOUND => {
+                    info!("Project NOT FOUND, PROCEED TO CREATE IT");
+                    create_project(project).await?;
+                    
+                }_ => {
+                    panic!("Uh oh! Something unexpected happened.");
+                }
+            }
+    }
+    Ok(responses)
+}
+
+async fn create_project(project: String) -> reqwest::Result<Vec<reqwest::Response>> {
+    let client = reqwest::Client::new();
+
+    let request = ProjectRequest {
+        name: project.clone()
+    };
+
+    let response = client.post(format!("{}/projects", CONFIG.opal_api_url.clone())).json(&request)
+        .send()
+        .await?;
+
+    let status = response.status();    
+    info!("Status of Project {}: {}", project, status.clone());    
+    
+    Ok(vec![response])
 }

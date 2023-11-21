@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-
 #[derive(Deserialize)]
 pub struct HttpParams {
     pub email: String,
@@ -23,4 +22,9 @@ pub struct TokenManagerResponse {
     pub projects: Vec<String>,     // projects are a list of strings
     pub bridgeheads: Vec<String>, // bridgeheads are a list of strings
     pub r_script: String,
+}
+
+#[derive(Serialize)]
+pub struct ProjectRequest {
+    pub name: String
 }
