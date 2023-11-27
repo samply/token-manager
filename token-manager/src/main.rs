@@ -4,6 +4,7 @@ mod config;
 mod errors;
 mod models;
 mod routes;
+mod schema;
 
 use std::net::SocketAddr;
 use axum::Router;
@@ -19,7 +20,6 @@ async fn main() {
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     info!("Starting server token ON!");
-    // Create Axum router and configure routes
     let app = Router::new()
         .nest("/api", configure_routes());
 

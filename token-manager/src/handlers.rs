@@ -1,3 +1,4 @@
+use diesel::{SqliteConnection, SelectableHelper, RunQueryDsl};
 use log::error;
 use uuid::Uuid;
 use tracing::{info, Level};
@@ -12,6 +13,8 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use diesel::prelude::*;
+use crate::models::{TokenManager, NewToken};
 
 const MAX_RETRIES: u32 = 3;
 
@@ -66,6 +69,7 @@ async fn post_opal_request(query: &Query<HttpParams>, token: &Uuid) -> reqwest::
         projects: list_projects.clone(),
     };
 
+    save_post(token.to_string().as_str(), query);
     let client = reqwest::Client::new();
     client.post(api_url + "/token").json(&request).send().await
 }
@@ -103,7 +107,8 @@ async fn create_project(project: String) -> reqwest::Result<Vec<reqwest::Respons
     let client = reqwest::Client::new();
 
     let request = ProjectRequest {
-        name: project.clone()
+        name: project.clone(),
+        title: project.clone()
     };
 
     let response = client.post(format!("{}/projects", CONFIG.opal_api_url.clone())).json(&request)
@@ -114,4 +119,73 @@ async fn create_project(project: String) -> reqwest::Result<Vec<reqwest::Respons
     info!("Status of Project {}: {}", project, status.clone());    
     
     Ok(vec![response])
+}
+
+pub fn save_post(token: &str, query: &Query<HttpParams>){
+    use crate::schema::tokens;
+    let connection = &mut establish_connection();
+
+    let new_token = NewToken {token: token, project_id: &query.projects, bk: &query.bridgehead_ids, status: "CREATED", user_id: &query.email};
+
+    match diesel::insert_into(tokens::table)
+    .values(&new_token)
+    .execute(connection)
+    {
+        Ok(_) =>{
+            info!("New Token Saved in DB");
+        }
+        Err(error) =>{
+            info!("Error connecting to {}", error);
+        }
+    }
+}
+
+pub fn establish_connection() -> SqliteConnection {
+    info!("Connecting to database: {}", CONFIG.token_manager_db_url.clone());
+    let database_url = &CONFIG.token_manager_db_url; 
+    let connection_result = SqliteConnection::establish(&database_url);
+
+    match connection_result {
+        Ok(connection) => {
+            // Log success or perform other actions
+            info!("Successfully connected to database: {}", CONFIG.token_manager_db_url.clone());
+            connection
+        }
+        Err(err) => panic!("Error connecting to {}: {}", database_url, err),
+    }
+}
+
+pub async fn check_project_status(project: String) -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)>{
+    use crate::schema::tokens::dsl::*;
+    
+    let connection = &mut establish_connection();
+
+    let record = tokens
+    .filter(project_id.eq(&project))
+    .select(TokenManager::as_select())
+    .load(connection)
+    .optional(); 
+
+    match record {
+        Ok(record) => {
+            info!("Project found with project_id: {:?} ", &record);
+            let json_response = serde_json::json!({
+                "status": "success",
+                "data": format!("Project found with project_id: {:?} ", &record)
+            });
+            return Ok((StatusCode::OK, Json(json_response)));
+        }
+        Err(err) =>  {
+            info!("Error calling DB: {} ", err);
+            let error_response = serde_json::json!({
+                "status": "fail",
+                "message": format!("Note with ID: {} not found", project)
+            });
+            return Err((StatusCode::NOT_FOUND, Json(error_response)));
+        }
+    }
+} 
+
+pub async fn opal_health_check() -> Result<(), Box<dyn std::error::Error>> {
+    Ok(())
 }
