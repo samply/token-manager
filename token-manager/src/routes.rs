@@ -1,8 +1,10 @@
 use axum::{
     extract::{Query, Path},
     response::IntoResponse,
+    http::StatusCode,
     routing::{get, post},
     Router,
+    Json
 };
 use hyper::{Body, Response};
 use serde_json::json;
@@ -13,7 +15,10 @@ use crate::handlers::{save_token_in_opal_app, establish_connection, opal_health_
 
 async fn health_check() -> Response<Body> {
 
+    // Attempt to establish a database connection
     let database_connection_result = establish_connection();
+
+    // Attempt to call the health_check Python function
     let health_check_result = opal_health_check().await;
 
     let (status_code, response_body) = if health_check_result.is_ok() {
@@ -50,8 +55,8 @@ async fn create_token(query: Query<HttpParams>)  -> impl IntoResponse {
     save_token_in_opal_app(query, token).await
 }
 
-async fn check_status(Path(project_id): Path<String>) -> impl IntoResponse {
-    check_project_status(project_id).await;
+async fn check_status(Path(project_id): Path<String>)  -> Result<impl IntoResponse, (StatusCode, Json<serde_json::Value>)> {
+    check_project_status(project_id).await
 }
 
 async fn generate_script() -> String {

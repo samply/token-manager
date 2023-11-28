@@ -167,21 +167,37 @@ pub async fn check_project_status(project: String) -> Result<impl IntoResponse, 
     .optional(); 
 
     match record {
-        Ok(record) => {
-            info!("Project found with project_id: {:?} ", &record);
+        Ok(Some(record))=> {
+            if !record.is_empty() {
+                info!("Project found with project_id: {:?} ", &record);
+                let json_response = serde_json::json!({
+                    "status": "success",
+                    "data": format!("Project found with project_id: {:?} ", &record)
+                });
+                return Ok((StatusCode::OK, Json(json_response)));
+            }else{
+                let json_response = serde_json::json!({
+                    "status": "Not Found",
+                    "data": format!("Project Not Found with project_id: {}", project)
+                });
+                return Err((StatusCode::NOT_FOUND, Json(json_response)));
+            }
+        }
+        Ok(None) =>{
+            info!("Project Not Found with project_id: {}", project);
             let json_response = serde_json::json!({
-                "status": "success",
-                "data": format!("Project found with project_id: {:?} ", &record)
+                "status": "Not Found",
+                "data": format!("Project Not Found with project_id: {}", project)
             });
-            return Ok((StatusCode::OK, Json(json_response)));
+            return Err((StatusCode::NOT_FOUND, Json(json_response)));
         }
         Err(err) =>  {
             info!("Error calling DB: {} ", err);
             let error_response = serde_json::json!({
-                "status": "fail",
-                "message": format!("Note with ID: {} not found", project)
+                "status": "500 Service Unavailable",
+                "message": format!("Can not connect to data base")
             });
-            return Err((StatusCode::NOT_FOUND, Json(error_response)));
+            return Err((StatusCode::SERVICE_UNAVAILABLE, Json(error_response)));
         }
     }
 } 
