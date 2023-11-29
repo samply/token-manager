@@ -1,10 +1,12 @@
 use log::error;
 use uuid::Uuid;
 use tracing::info;
+use serde_json::json;
 use tokio::time::{sleep, Duration};
 use axum::{
     extract::Query,
     response::IntoResponse,
+    Json
 };
 use crate::utils::split_and_trim;
 use crate::config::CONFIG;
@@ -116,6 +118,21 @@ async fn create_project(project: String) -> reqwest::Result<Vec<reqwest::Respons
     Ok(vec![response])
 }
 
-pub async fn opal_health_check() -> Result<(), Box<dyn std::error::Error>> {
-    Ok(())
+pub async fn opal_health_check() -> Result<Json<serde_json::Value>,  Box<dyn std::error::Error>> {
+    let client = reqwest::Client::new();
+
+    let response = client.get(format!("{}/health", CONFIG.opal_api_url.clone()))
+    .send()
+    .await?;
+
+    if response.status().is_success() {
+        let json_response = json!({
+            "status": "success",
+            "message": "Opal service is up"
+        });
+        Ok(Json(json_response))
+    } else {
+        let error_message = format!("Opal service health check failed with status: {}", response.status());
+        Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_message)))
+    }
 }

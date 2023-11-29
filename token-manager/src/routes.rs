@@ -1,52 +1,36 @@
 use axum::{
     extract::{Query, Path, rejection::QueryRejection},
-    response::{Response, IntoResponse},
+    response::IntoResponse,
     http::StatusCode,
     routing::{get, post},
     Json, Router
 };
-use hyper::{Body};
 use serde_json::json;
 use crate::models::{HttpParams, ScriptParams};
 use crate::utils::generate_token;
-use crate::db::{establish_connection, check_project_status, generate_user_script};
+use crate::db::{check_project_status, generate_user_script, check_db_status};
 use crate::handlers::{save_token_in_opal_app, opal_health_check};
 
-async fn health_check() -> Response<Body> {
+async fn health_check() -> impl IntoResponse {
+    // Check database connection
+    let database_connection_status = check_db_status().is_ok();
 
-    // Attempt to establish a database connection
-    let database_connection_result = establish_connection();
+    // Check Opal health
+    let opal_health_status = opal_health_check().await.is_ok();
 
-    // Attempt to call the health_check Python function
-    let health_check_result = opal_health_check().await;
-
-    let (status_code, response_body) = if health_check_result.is_ok() {
-        (
-            hyper::StatusCode::OK,
-            json!({
-                "status": "ok",
-                "database_connection": "ok",
-                "health_check": "ok",
-            }),
-        )
+    let status_code = if database_connection_status && opal_health_status {
+        StatusCode::OK
     } else {
-        (
-            hyper::StatusCode::SERVICE_UNAVAILABLE,
-            json!({
-                "status": "error",
-                "database_connection": "error",
-                "health_check": "error",
-            }),
-        )
+        StatusCode::SERVICE_UNAVAILABLE
     };
 
-    let response_body_str = serde_json::to_string(&response_body).unwrap();
+    let response_body = json!({
+        "status": if status_code == StatusCode::OK { "ok" } else { "error" },
+        "database_connection": if database_connection_status { "ok" } else { "down" },
+        "opal_health_check": if opal_health_status { "ok" } else { "down" },
+    });    
 
-    Response::builder()
-        .status(status_code)
-        .header("Content-Type", "application/json")
-        .body(Body::from(response_body_str))
-        .expect("Failed to build response")
+    (status_code, Json(response_body))
 }
 
 async fn create_token(query: Query<HttpParams>)  -> impl IntoResponse {

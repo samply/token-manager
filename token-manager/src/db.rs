@@ -11,6 +11,11 @@ use crate::config::CONFIG;
 use crate::utils::{split_and_trim, generate_r_script};
 use crate::models::{HttpParams, NewToken, TokenManager, ScriptParams};
 
+pub fn check_db_status() -> Result<SqliteConnection, diesel::ConnectionError> {
+    let database_url = &CONFIG.token_manager_db_url;
+    SqliteConnection::establish(database_url)
+}
+
 pub fn establish_connection() -> SqliteConnection {
     info!("Connecting to database: {}", CONFIG.token_manager_db_url.clone());
     let database_url = &CONFIG.token_manager_db_url; 
