@@ -5,6 +5,7 @@ mod errors;
 mod models;
 mod routes;
 mod schema;
+mod db;
 
 use std::net::SocketAddr;
 use axum::Router;

@@ -9,7 +9,8 @@ use hyper::{Body};
 use serde_json::json;
 use crate::models::{HttpParams, ScriptParams};
 use crate::utils::generate_token;
-use crate::handlers::{save_token_in_opal_app, establish_connection, opal_health_check, check_project_status, generate_user_script};
+use crate::db::{establish_connection, check_project_status, generate_user_script};
+use crate::handlers::{save_token_in_opal_app, opal_health_check};
 
 async fn health_check() -> Response<Body> {
 

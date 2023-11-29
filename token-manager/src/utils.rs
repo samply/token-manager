@@ -1,10 +1,4 @@
-use crate::models::HttpParams;
-use crate::config::CONFIG;
-use lettre::message::header::ContentType;
-use lettre::transport::smtp::authentication::Credentials;
-use lettre::{Message, SmtpTransport, Transport};
 use uuid::Uuid;
-use log::error;
 
 pub fn generate_token() -> Uuid {
     Uuid::new_v4()
