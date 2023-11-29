@@ -16,25 +16,30 @@ pub fn split_and_trim(input: &str) -> Vec<String> {
         .collect()
 }
 
-pub fn generate_r_script(token: Uuid, projects: Vec<String>, body: String) -> String {
-    format!(
-        r#"
+pub fn generate_r_script(script_lines: Vec<String>) -> String {
+    let mut builder_script = String::from(
+        "
         library(DSI)
         library(DSOpal)
         library(dsBaseClient)
 
-        token <- "{}"
-        projects <- "{}"
-
         builder <- DSI::newDSLoginBuilder(.silent = FALSE)
-        builder$append(server='DockerOpal', url="https://opal:8443/opal/", token=token, table=projects, driver="OpalDriver", options = "list(ssl_verifyhost=0,ssl_verifypeer=0)")
-        
+        ",
+    );
+
+    // Append each line to the script.
+    for line in script_lines {
+        builder_script.push_str(&line);
+        builder_script.push('\n');
+    }
+
+    // Finish the script with the login and assignment commands.
+    builder_script.push_str(
+        "
         logindata <- builder$build()
-        connections <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = "D")
-        
-        {}
-        "#,
-        token,
-        projects.join(","), body
-    )
+        connections <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = 'D')
+        ",
+    );
+
+    builder_script
 }

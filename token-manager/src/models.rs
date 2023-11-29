@@ -10,6 +10,12 @@ pub struct HttpParams {
     pub bridgehead_ids: String, // Comma-separated values
 }
 
+#[derive(Deserialize)]
+pub struct ScriptParams {
+    pub project: String,
+    pub user: String,       
+}
+
 #[derive(Serialize)]
 pub struct OpalRequest {
     pub name: String,
@@ -33,7 +39,7 @@ pub struct ProjectRequest {
 }
 
 #[derive(Debug)]
-#[derive(Queryable, Selectable)]
+#[derive(Serialize, Deserialize, Queryable, Selectable)]
 #[diesel(table_name = crate::schema::tokens)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct TokenManager {
