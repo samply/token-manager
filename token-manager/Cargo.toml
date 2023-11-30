@@ -26,6 +26,7 @@ lettre_email = "0.9"
 anyhow = { version = "1.0", default-features = false }
 diesel = { version = "2.1.4", features = ["sqlite"] }
 openssl = { version = "0.10.59", features = ["vendored"] }
+chrono = "0.4"
 
 # Logging
 tracing = { version = "0.1.37", default_features = false }

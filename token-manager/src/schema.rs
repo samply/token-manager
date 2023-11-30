@@ -8,5 +8,6 @@ diesel::table! {
         bk -> Text,
         status -> Text,
         user_id -> Text,
+        created_at -> Text,
     }
 }

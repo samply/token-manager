@@ -8,8 +8,8 @@ use axum::{
     Json,
 };
 use crate::config::CONFIG;
-use crate::utils::{split_and_trim, generate_r_script};
-use crate::models::{HttpParams, NewToken, TokenManager, ScriptParams};
+use crate::utils::generate_r_script;
+use crate::models::{NewToken, TokenManager, ScriptParams};
 
 pub fn check_db_status() -> Result<SqliteConnection, diesel::ConnectionError> {
     let database_url = &CONFIG.token_manager_db_url;
@@ -31,28 +31,22 @@ pub fn establish_connection() -> SqliteConnection {
     }
 }
 
-pub fn save_token_db(token: &str, query: &Query<HttpParams>){
+pub fn save_token_db(token: NewToken){
     use crate::schema::tokens;
     let connection = &mut establish_connection();
 
-    let bridgeheads = split_and_trim(&query.bridgehead_ids);
-
-    for bridgehead in bridgeheads{
-
-        let new_token = NewToken {token: token, project_id: &query.projects, bk: &bridgehead, status: "CREATED", user_id: &query.email};
-
-        match diesel::insert_into(tokens::table)
-        .values(&new_token)
-        .execute(connection)
-        {
-            Ok(_) =>{
-                info!("New Token Saved in DB");
-            }
-            Err(error) =>{
-                info!("Error connecting to {}", error);
-            }
+    match diesel::insert_into(tokens::table)
+    .values(&token)
+    .execute(connection)
+    {
+        Ok(_) =>{
+            info!("New Token Saved in DB");
+        }
+        Err(error) =>{
+            info!("Error connecting to {}", error);
         }
     }
+    
 }
 
 pub async fn check_project_status(project: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {

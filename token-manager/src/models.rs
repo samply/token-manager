@@ -6,7 +6,7 @@ use crate::schema::tokens;
 #[derive(Deserialize)]
 pub struct HttpParams {
     pub email: String,
-    pub projects: String,       // Comma-separated values
+    pub project_id: String,       // Comma-separated values
     pub bridgehead_ids: String, // Comma-separated values
 }
 
@@ -20,7 +20,7 @@ pub struct ScriptParams {
 pub struct OpalRequest {
     pub name: String,
     pub token: Uuid,
-    pub projects: Vec<String>
+    pub projects: String
 }
 
 #[derive(Serialize)]
@@ -49,6 +49,7 @@ pub struct TokenManager {
     pub bk: String,
     pub status: String, 
     pub user_id: String,
+    pub created_at: String,
 }
 
 #[derive(Insertable)]
@@ -59,4 +60,5 @@ pub struct NewToken<'a> {
     pub bk:  &'a str,
     pub status:  &'a str,
     pub user_id:  &'a str,
+    pub created_at:  &'a str,
 }

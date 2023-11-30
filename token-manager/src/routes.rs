@@ -7,7 +7,6 @@ use axum::{
 };
 use serde_json::json;
 use crate::models::{HttpParams, ScriptParams};
-use crate::utils::generate_token;
 use crate::db::{check_project_status, generate_user_script, check_db_status};
 use crate::handlers::{save_token_in_opal_app, opal_health_check};
 
@@ -33,9 +32,18 @@ async fn health_check() -> impl IntoResponse {
     (status_code, Json(response_body))
 }
 
-async fn create_token(query: Query<HttpParams>)  -> impl IntoResponse {
-    let token = generate_token();
-    save_token_in_opal_app(query, token).await
+async fn create_token(query: Result<Query<HttpParams>, QueryRejection>)  -> impl IntoResponse {
+    match query {
+
+        Ok(query) => {
+
+            save_token_in_opal_app(query).await.into_response() 
+
+        }
+        Err(e) => {
+            (StatusCode::BAD_REQUEST, format!("Missing required query parameters: {}", e)).into_response()
+        }
+    }
 }
 
 async fn check_status(Path(project_id): Path<String>) -> impl IntoResponse {
@@ -66,7 +74,6 @@ async fn generate_script(query: Result<Query<ScriptParams>, QueryRejection>) -> 
 
         }
         Err(e) => {
-            // If deserialization fails, return an error message
             (StatusCode::BAD_REQUEST, format!("Missing required query parameters: {}", e)).into_response()
         }
     }

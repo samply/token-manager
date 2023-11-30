@@ -1,103 +1,125 @@
 use log::error;
-use uuid::Uuid;
 use tracing::info;
 use serde_json::json;
+use hyper::StatusCode;
+use reqwest::{Client, Response};
+use anyhow::Result;
 use tokio::time::{sleep, Duration};
+use chrono::Local;
 use axum::{
     extract::Query,
     response::IntoResponse,
     Json
 };
-use crate::utils::split_and_trim;
+use crate::utils::{split_and_trim, generate_token};
 use crate::config::CONFIG;
-use crate::models::{HttpParams, OpalRequest, ProjectRequest};
+use crate::models::{HttpParams, OpalRequest, ProjectRequest, NewToken};
 use crate::db::save_token_db;
 
 const MAX_RETRIES: u32 = 3;
 
-pub async fn save_token_in_opal_app(
-    query: Query<HttpParams>,
-    token: Uuid,
-) -> impl IntoResponse {
+pub async fn save_token_in_opal_app(query: Query<HttpParams>) -> impl IntoResponse {
     let mut retries_remaining = MAX_RETRIES;
-    let mut  response: Result<reqwest::Response, reqwest::Error> = post_opal_request(&query, &token).await;
 
     while retries_remaining > 0 {
-        if response.is_ok() && response.as_ref().unwrap().status().is_success() {
-            return (hyper::StatusCode::OK).into_response();
-        }
-        else if response.is_ok() && response.as_ref().unwrap().status().is_client_error() {
-            let status = response.as_ref().unwrap().status();
-            let text = response.as_ref().unwrap();
-            error!("Request failed. Status: {}. Error: {:?}", status, text);
-            return (hyper::StatusCode::BAD_REQUEST, format!("Request failed. Error: {:?}", text)).into_response();
-        }
-        if retries_remaining > 1 && response.as_ref().unwrap().status().is_server_error() {
-            error!(
-                "Request failed. Retrying (attempt {}/{})",
-                MAX_RETRIES - retries_remaining + 1,
-                MAX_RETRIES
-            );
-            sleep(Duration::from_millis(5000)).await; // Add a delay before retrying
+
+        match post_opal_request(&query).await {
+            Ok(response) if response.status().is_success() => {
+                return StatusCode::OK.into_response();
+            },
+
+            Ok(response) => {
+                if response.status().is_client_error() {
+                    let status = response.status();
+                    let text = response.text().await.unwrap_or_default();
+                    error!("Request failed. Status: {}. Error: {}", status, text);
+                    return (StatusCode::BAD_REQUEST, format!("Request failed. Error: {}", text)).into_response();
+                }
+
+                if retries_remaining > 1 && response.status().is_server_error() {
+                    error!(
+                        "Request failed. Retrying (attempt {}/{})",
+                        MAX_RETRIES - retries_remaining + 1,
+                        MAX_RETRIES
+                    );
+                    sleep(Duration::from_millis(5000)).await;
+                }
+            },
+            Err(e) => {
+                error!("Request error: {:?}", e);
+                return (StatusCode::INTERNAL_SERVER_ERROR, format!("Request error: {:?}", e)).into_response();
+            }
         }
         retries_remaining -= 1;
-        response = post_opal_request(&query, &token).await;
     }
-
-    error!("Request error: {:?}", response.as_ref().unwrap());
-    return (hyper::StatusCode::INTERNAL_SERVER_ERROR, format!("Request error: {:?}", response.as_ref().unwrap())).into_response();
+    (StatusCode::INTERNAL_SERVER_ERROR, "All retries failed".to_string()).into_response()
 }
 
 
-async fn post_opal_request(query: &Query<HttpParams>, token: &Uuid) -> reqwest::Result<reqwest::Response> {
-    let api_url = CONFIG.opal_api_url.clone();
-    
-    // Splitting from comma-separated string to a Vec<String>
+async fn post_opal_request(query: &Query<HttpParams>) -> Result<Response> {
     let bridgeheads = split_and_trim(&query.bridgehead_ids);
-    let list_projects = split_and_trim(&query.projects);
 
-    if !list_projects.is_empty() {
-        create_project_if_not_exist(list_projects.clone()).await?;
+    if bridgeheads.is_empty() {
+        return Err(anyhow::Error::msg("No bridgeheads to process"));
+    }
+
+    let client = Client::new();
+    let api_url = CONFIG.opal_api_url.clone();
+    let today = Local::now();
+    let formatted_date = today.format("%d-%m-%Y").to_string();
+
+    let token = generate_token();
+
+    for bridgehead in bridgeheads {
+        if !query.project_id.clone().is_empty() {
+            if let Err(e) = create_project_if_not_exist(query.project_id.clone()).await {
+                return Err(anyhow::Error::msg(e));
+            }
+        }
+        let token_str = token.to_string();
+        let new_token = NewToken {token: &token_str, project_id: &query.project_id, bk: &bridgehead, status: "CREATED", user_id: &query.email, created_at: &formatted_date};
+
+        save_token_db(new_token);
     }
 
     let request = OpalRequest {
         name: query.email.clone(),
         token: token.clone(),
-        projects: list_projects.clone(),
+        projects: query.project_id.clone(),
     };
-
-    save_token_db(token.to_string().as_str(), query);
-    let client = reqwest::Client::new();
-    client.post(api_url + "/token").json(&request).send().await
+    match client.post(format!("{}/token", api_url))
+                    .json(&request)
+                    .send()
+                    .await {
+            Ok(response) if response.status().is_success() => return Ok(response),
+            Ok(response) => return Err(anyhow::Error::msg(response.status())),
+            Err(e) => return Err(anyhow::Error::msg(e)),  
+        }
 }
 
-async fn create_project_if_not_exist(projects: Vec<String>) -> reqwest::Result<Vec<reqwest::Response>> {
+async fn create_project_if_not_exist(project: String) -> reqwest::Result<reqwest::Response> {
     let client = reqwest::Client::new();
 
-    let mut responses = Vec::new();
+    let response = client.get(format!("{}/project/{}", CONFIG.opal_api_url.clone(), project))
+        .send()
+        .await?;
 
-    for project in projects {
-        let response = client.get(format!("{}/project/{}", CONFIG.opal_api_url.clone(), project))
-            .send()
-            .await?;
+        let status = response.status();    
+        info!("Status of Project {}: {}", project, status.clone());
 
-            let status = response.status();    
-            info!("Status of Project {}: {}", project, status.clone());
-
-            match status {
-                reqwest::StatusCode::OK => {
-                    info!("Project Exist!");
-                }
-                reqwest::StatusCode::NOT_FOUND => {
-                    info!("Project NOT FOUND, PROCEED TO CREATE IT");
-                    create_project(project).await?;
-                    
-                }_ => {
-                    panic!("Uh oh! Something unexpected happened.");
-                }
+        match status {
+            reqwest::StatusCode::OK => {
+                info!("Project Exist!");
             }
-    }
-    Ok(responses)
+            reqwest::StatusCode::NOT_FOUND => {
+                info!("Project NOT FOUND, PROCEED TO CREATE IT");
+                create_project(project).await?;
+                
+            }_ => {
+                panic!("Uh oh! Something unexpected happened.");
+            }
+        }
+    Ok(response)
 }
 
 async fn create_project(project: String) -> reqwest::Result<Vec<reqwest::Response>> {
