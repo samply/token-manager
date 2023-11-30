@@ -13,17 +13,17 @@ use axum::{
 };
 use crate::utils::{split_and_trim, generate_token};
 use crate::config::CONFIG;
-use crate::models::{HttpParams, OpalRequest, ProjectRequest, NewToken};
+use crate::models::{TokenParams, OpalRequest, ProjectRequest, NewToken};
 use crate::db::save_token_db;
 
 const MAX_RETRIES: u32 = 3;
 
-pub async fn save_token_in_opal_app(query: Query<HttpParams>) -> impl IntoResponse {
+pub async fn register_opal_token(token_params: Query<TokenParams>) -> impl IntoResponse {
     let mut retries_remaining = MAX_RETRIES;
 
     while retries_remaining > 0 {
 
-        match post_opal_request(&query).await {
+        match send_token_registration_request(&token_params).await {
             Ok(response) if response.status().is_success() => {
                 return StatusCode::OK.into_response();
             },
@@ -56,8 +56,8 @@ pub async fn save_token_in_opal_app(query: Query<HttpParams>) -> impl IntoRespon
 }
 
 
-async fn post_opal_request(query: &Query<HttpParams>) -> Result<Response> {
-    let bridgeheads = split_and_trim(&query.bridgehead_ids);
+async fn send_token_registration_request(token_params: &Query<TokenParams>) -> Result<Response> {
+    let bridgeheads = split_and_trim(&token_params.bridgehead_ids);
 
     if bridgeheads.is_empty() {
         return Err(anyhow::Error::msg("No bridgeheads to process"));
@@ -71,22 +71,23 @@ async fn post_opal_request(query: &Query<HttpParams>) -> Result<Response> {
     let token = generate_token();
 
     for bridgehead in bridgeheads {
-        if !query.project_id.clone().is_empty() {
-            if let Err(e) = create_project_if_not_exist(query.project_id.clone()).await {
+        if !token_params.project_id.is_empty() {
+            if let Err(e) = create_project_if_missing(token_params.project_id.clone()).await {
                 return Err(anyhow::Error::msg(e));
             }
         }
         let token_str = token.to_string();
-        let new_token = NewToken {token: &token_str, project_id: &query.project_id, bk: &bridgehead, status: "CREATED", user_id: &query.email, created_at: &formatted_date};
+        let new_token = NewToken {token: &token_str, project_id: &token_params.project_id, bk: &bridgehead, status: "CREATED", user_id: &token_params.email, created_at: &formatted_date};
 
         save_token_db(new_token);
     }
 
     let request = OpalRequest {
-        name: query.email.clone(),
+        name: token_params.email.clone(),
         token: token.clone(),
-        projects: query.project_id.clone(),
+        projects: token_params.project_id.clone(),
     };
+
     match client.post(format!("{}/token", api_url))
                     .json(&request)
                     .send()
@@ -97,7 +98,7 @@ async fn post_opal_request(query: &Query<HttpParams>) -> Result<Response> {
         }
 }
 
-async fn create_project_if_not_exist(project: String) -> reqwest::Result<reqwest::Response> {
+async fn create_project_if_missing(project: String) -> reqwest::Result<reqwest::Response> {
     let client = reqwest::Client::new();
 
     let response = client.get(format!("{}/project/{}", CONFIG.opal_api_url.clone(), project))
@@ -115,8 +116,8 @@ async fn create_project_if_not_exist(project: String) -> reqwest::Result<reqwest
                 info!("Project NOT FOUND, PROCEED TO CREATE IT");
                 create_project(project).await?;
                 
-            }_ => {
-                panic!("Uh oh! Something unexpected happened.");
+            } _ => {
+                error!("Error while trying to create new Project.");
             }
         }
     Ok(response)

@@ -6,9 +6,9 @@ use axum::{
     Json, Router
 };
 use serde_json::json;
-use crate::models::{HttpParams, ScriptParams};
+use crate::models::{TokenParams, ScriptParams};
 use crate::db::{check_project_status, generate_user_script, check_db_status};
-use crate::handlers::{save_token_in_opal_app, opal_health_check};
+use crate::handlers::{register_opal_token, opal_health_check};
 
 async fn health_check() -> impl IntoResponse {
     // Check database connection
@@ -32,16 +32,16 @@ async fn health_check() -> impl IntoResponse {
     (status_code, Json(response_body))
 }
 
-async fn create_token(query: Result<Query<HttpParams>, QueryRejection>)  -> impl IntoResponse {
-    match query {
+async fn create_token(token_params: Result<Query<TokenParams>, QueryRejection>)  -> impl IntoResponse {
+    match token_params {
 
-        Ok(query) => {
+        Ok(token_params) => {
 
-            save_token_in_opal_app(query).await.into_response() 
+            register_opal_token(token_params).await.into_response() 
 
         }
         Err(e) => {
-            (StatusCode::BAD_REQUEST, format!("Missing required query parameters: {}", e)).into_response()
+            (StatusCode::BAD_REQUEST, format!("Missing required token params parameters: {}", e)).into_response()
         }
     }
 }
@@ -62,12 +62,12 @@ async fn check_status(Path(project_id): Path<String>) -> impl IntoResponse {
 }
 
 
-async fn generate_script(query: Result<Query<ScriptParams>, QueryRejection>) -> impl IntoResponse {
-    match query {
+async fn generate_script(script_params: Result<Query<ScriptParams>, QueryRejection>) -> impl IntoResponse {
+    match script_params {
 
-        Ok(query) => {
+        Ok(script_params) => {
 
-            match generate_user_script(query).await {
+            match generate_user_script(script_params).await {
                 Ok(script) => (StatusCode::OK, Json(script)).into_response(),
                 Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
             }
@@ -83,7 +83,7 @@ async fn generate_script(query: Result<Query<ScriptParams>, QueryRejection>) -> 
 pub fn configure_routes() -> Router {
     Router::new()
     .route("/health", get(health_check))
-    .route("/createToken", post(create_token))
-    .route("/checkStatus/:project_id", get(check_status))
-    .route("/generateScript", post(generate_script))
+    .route("/tokens", post(create_token))
+    .route("/projects/:project_id/status", get(check_status))
+    .route("/scripts", post(generate_script))
 }

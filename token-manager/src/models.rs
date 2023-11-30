@@ -4,7 +4,7 @@ use diesel::prelude::*;
 use crate::schema::tokens;
 
 #[derive(Deserialize)]
-pub struct HttpParams {
+pub struct TokenParams {
     pub email: String,
     pub project_id: String,       // Comma-separated values
     pub bridgehead_ids: String, // Comma-separated values
