@@ -103,8 +103,8 @@ pub async fn generate_user_script(query: Query<ScriptParams>) -> Result<String, 
                 for record in records
                 {
                     info!("Records Extracted: {:?}", record);
-                    script_lines.push(format!("builder$append(server='DockerOpal', url='https://opal:8443/opal/', token='{}', table='{}', driver='OpalDriver', options = list(ssl_verifyhost=0,ssl_verifypeer=0))",
-                    record.token, record.project_id
+                    script_lines.push(format!("builder$append(server='DockerOpal', url='https://{}:8443/opal/', token='{}', table='{}', driver='OpalDriver', options = list(ssl_verifyhost=0,ssl_verifypeer=0))",
+                    record.bk , record.token, record.project_id
                     ));
                 }
 

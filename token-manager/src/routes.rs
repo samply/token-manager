@@ -5,6 +5,7 @@ use axum::{
     routing::{get, post},
     Json, Router
 };
+use lettre::message::header::ContentType;
 use serde_json::json;
 use crate::models::{TokenParams, ScriptParams};
 use crate::db::{check_project_status, generate_user_script, check_db_status};
@@ -68,7 +69,7 @@ async fn generate_script(script_params: Result<Query<ScriptParams>, QueryRejecti
         Ok(script_params) => {
 
             match generate_user_script(script_params).await {
-                Ok(script) => (StatusCode::OK, Json(script)).into_response(),
+                Ok(script) => (StatusCode::OK, script).into_response(),
                 Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
             }
 
