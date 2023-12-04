@@ -5,7 +5,6 @@ use axum::{
     routing::{get, post},
     Json, Router
 };
-use lettre::message::header::ContentType;
 use serde_json::json;
 use crate::models::{TokenParams, ScriptParams};
 use crate::db::{check_project_status, generate_user_script, check_db_status};

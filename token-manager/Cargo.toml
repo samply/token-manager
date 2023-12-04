@@ -21,8 +21,6 @@ laplace_rs = {version = "0.2.0", git = "https://github.com/samply/laplace-rs.git
 base64 = { version = "0.21.0", default_features = false }
 thiserror = "1.0.38"
 http = "0.2"
-lettre = "0.11.0"
-lettre_email = "0.9"
 anyhow = { version = "1.0", default-features = false }
 diesel = { version = "2.1.4", features = ["sqlite"] }
 openssl = { version = "0.10.59", features = ["vendored"] }

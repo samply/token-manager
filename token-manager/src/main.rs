@@ -7,7 +7,6 @@ mod routes;
 mod schema;
 mod db;
 
-use std::net::SocketAddr;
 use axum::Router;
 use tracing::{info, Level};
 use tracing_subscriber::{fmt::SubscriberBuilder, EnvFilter};
@@ -24,8 +23,7 @@ async fn main() {
     let app = Router::new()
         .nest("/api", configure_routes());
 
-    let addr = SocketAddr::new(CONFIG.host, CONFIG.port);
-    axum::Server::bind(&addr)
+    axum::Server::bind(&CONFIG.addr)
         .serve(app.into_make_service())
         .await
         .unwrap();

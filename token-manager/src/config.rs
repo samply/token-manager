@@ -1,5 +1,5 @@
 use once_cell::sync::Lazy;
-use std::net::IpAddr;
+use std::net::SocketAddr;
 use clap::Parser;
 
 pub(crate) static CONFIG: Lazy<Config> = Lazy::new(|| Config::parse());
@@ -15,11 +15,8 @@ pub struct Config {
     #[clap(long, env)]
     pub pwd_email: String,
 
-    #[clap(long, env)]
-    pub host: IpAddr,
-
-    #[clap(long, env)]
-    pub port: u16,
+    #[clap(long, env, default_value="0.0.0.0:3030")]
+    pub addr: SocketAddr,
 
     #[clap(long, env)]
     pub token_manager_db_url: String,
