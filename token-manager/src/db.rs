@@ -1,15 +1,11 @@
-use log::error;
-use tracing::info;
-use serde_json::json;
-use diesel::prelude::*;
-use axum::{
-    extract::Query,
-    http::StatusCode,
-    Json,
-};
 use crate::config::CONFIG;
+use crate::models::{NewToken, ScriptParams, TokenManager};
 use crate::utils::generate_r_script;
-use crate::models::{NewToken, TokenManager, ScriptParams};
+use axum::{extract::Query, http::StatusCode, Json};
+use diesel::prelude::*;
+use log::error;
+use serde_json::json;
+use tracing::info;
 
 pub fn check_db_status() -> Result<SqliteConnection, diesel::ConnectionError> {
     let database_url = &CONFIG.token_manager_db_url;
@@ -17,41 +13,48 @@ pub fn check_db_status() -> Result<SqliteConnection, diesel::ConnectionError> {
 }
 
 pub fn establish_connection() -> SqliteConnection {
-    info!("Connecting to database: {}", CONFIG.token_manager_db_url.clone());
-    let database_url = &CONFIG.token_manager_db_url; 
+    info!(
+        "Connecting to database: {}",
+        CONFIG.token_manager_db_url.clone()
+    );
+    let database_url = &CONFIG.token_manager_db_url;
     let connection_result = SqliteConnection::establish(&database_url);
 
     match connection_result {
         Ok(connection) => {
             // Log success or perform other actions
-            info!("Successfully connected to database: {}", CONFIG.token_manager_db_url.clone());
+            info!(
+                "Successfully connected to database: {}",
+                CONFIG.token_manager_db_url.clone()
+            );
             connection
         }
         Err(err) => panic!("Error connecting to {}: {}", database_url, err),
     }
 }
 
-pub fn save_token_db(token: NewToken){
+pub fn save_token_db(token: NewToken) {
     use crate::schema::tokens;
     let connection = &mut establish_connection();
 
     match diesel::insert_into(tokens::table)
-    .values(&token)
-    .execute(connection)
+        .values(&token)
+        .execute(connection)
     {
-        Ok(_) =>{
+        Ok(_) => {
             info!("New Token Saved in DB");
         }
-        Err(error) =>{
+        Err(error) => {
             info!("Error connecting to {}", error);
         }
     }
-    
 }
 
-pub async fn check_project_status(project: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+pub async fn check_project_status(
+    project: String,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     use crate::schema::tokens::dsl::*;
-    
+
     let connection = &mut establish_connection();
 
     match tokens
@@ -75,33 +78,33 @@ pub async fn check_project_status(project: String) -> Result<Json<serde_json::Va
                 }"#;
                 Err((StatusCode::NOT_FOUND, error_response.into()))
             }
-        },
+        }
         Err(err) => {
             error!("Error calling DB: {}", err);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, "Cannot connect to database".into()))
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Cannot connect to database".into(),
+            ))
         }
     }
 }
 
 pub async fn generate_user_script(query: Query<ScriptParams>) -> Result<String, String> {
     use crate::schema::tokens::dsl::*;
-    
+
     let connection = &mut establish_connection();
 
     let records = tokens
-    .filter(project_id.eq(&query.project)) // Match project_id from the query parameters
-    .filter(user_id.eq(&query.user))       // Match user_id from the query parameters
-    .select(TokenManager::as_select())        
-    .load::<TokenManager>(connection);
+        .filter(project_id.eq(&query.project)) // Match project_id from the query parameters
+        .filter(user_id.eq(&query.user)) // Match user_id from the query parameters
+        .select(TokenManager::as_select())
+        .load::<TokenManager>(connection);
 
     match records {
         Ok(records) => {
-
             let mut script_lines = Vec::new();
-            if !records.is_empty()
-            {
-                for record in records
-                {
+            if !records.is_empty() {
+                for record in records {
                     info!("Records Extracted: {:?}", record);
                     script_lines.push(format!("builder$append(server='DockerOpal', url='https://{}:8443/opal/', token='{}', table='{}', driver='OpalDriver', options = list(ssl_verifyhost=0,ssl_verifypeer=0))",
                     record.bk , record.token, record.project_id
@@ -111,9 +114,7 @@ pub async fn generate_user_script(query: Query<ScriptParams>) -> Result<String, 
                 let script = generate_r_script(script_lines);
                 info!("Script Generated: {:?}", script);
                 Ok(script)
-    
-            }
-            else {
+            } else {
                 info!("No records were found");
                 return Ok("No records found for the given project and user.".into());
             }
@@ -122,5 +123,5 @@ pub async fn generate_user_script(query: Query<ScriptParams>) -> Result<String, 
             error!("Error loading records: {}", err);
             Err(format!("Error loading records: {}", err))
         }
-    }  
+    }
 }

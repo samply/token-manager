@@ -2,12 +2,10 @@ use uuid::Uuid;
 
 pub fn generate_token() -> Uuid {
     Uuid::new_v4()
-} 
+}
 
 pub fn split_and_trim(input: &str) -> Vec<String> {
-    input.split(',')
-        .map(|s| s.trim().to_string())
-        .collect()
+    input.split(',').map(|s| s.trim().to_string()).collect()
 }
 
 pub fn generate_r_script(script_lines: Vec<String>) -> String {

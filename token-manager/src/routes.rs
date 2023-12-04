@@ -1,14 +1,14 @@
+use crate::db::{check_db_status, check_project_status, generate_user_script};
+use crate::handlers::{opal_health_check, register_opal_token};
+use crate::models::{ScriptParams, TokenParams};
 use axum::{
-    extract::{Query, Path, rejection::QueryRejection},
-    response::IntoResponse,
+    extract::{rejection::QueryRejection, Path, Query},
     http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
-    Json, Router
+    Json, Router,
 };
 use serde_json::json;
-use crate::models::{TokenParams, ScriptParams};
-use crate::db::{check_project_status, generate_user_script, check_db_status};
-use crate::handlers::{register_opal_token, opal_health_check};
 
 async fn health_check() -> impl IntoResponse {
     // Check database connection
@@ -27,22 +27,21 @@ async fn health_check() -> impl IntoResponse {
         "status": if status_code == StatusCode::OK { "ok" } else { "error" },
         "database_connection": if database_connection_status { "ok" } else { "down" },
         "opal_health_check": if opal_health_status { "ok" } else { "down" },
-    });    
+    });
 
     (status_code, Json(response_body))
 }
 
-async fn create_token(token_params: Result<Query<TokenParams>, QueryRejection>)  -> impl IntoResponse {
+async fn create_token(
+    token_params: Result<Query<TokenParams>, QueryRejection>,
+) -> impl IntoResponse {
     match token_params {
-
-        Ok(token_params) => {
-
-            register_opal_token(token_params).await.into_response() 
-
-        }
-        Err(e) => {
-            (StatusCode::BAD_REQUEST, format!("Missing required token params parameters: {}", e)).into_response()
-        }
+        Ok(token_params) => register_opal_token(token_params).await.into_response(),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            format!("Missing required token params parameters: {}", e),
+        )
+            .into_response(),
     }
 }
 
@@ -61,29 +60,26 @@ async fn check_status(Path(project_id): Path<String>) -> impl IntoResponse {
     }
 }
 
-
-async fn generate_script(script_params: Result<Query<ScriptParams>, QueryRejection>) -> impl IntoResponse {
+async fn generate_script(
+    script_params: Result<Query<ScriptParams>, QueryRejection>,
+) -> impl IntoResponse {
     match script_params {
-
-        Ok(script_params) => {
-
-            match generate_user_script(script_params).await {
-                Ok(script) => (StatusCode::OK, script).into_response(),
-                Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-            }
-
-        }
-        Err(e) => {
-            (StatusCode::BAD_REQUEST, format!("Missing required query parameters: {}", e)).into_response()
-        }
+        Ok(script_params) => match generate_user_script(script_params).await {
+            Ok(script) => (StatusCode::OK, script).into_response(),
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        },
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            format!("Missing required query parameters: {}", e),
+        )
+            .into_response(),
     }
-
 }
 
 pub fn configure_routes() -> Router {
     Router::new()
-    .route("/health", get(health_check))
-    .route("/tokens", post(create_token))
-    .route("/projects/:project_id/status", get(check_status))
-    .route("/scripts", post(generate_script))
+        .route("/health", get(health_check))
+        .route("/tokens", post(create_token))
+        .route("/projects/:project_id/status", get(check_status))
+        .route("/scripts", post(generate_script))
 }
