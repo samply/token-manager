@@ -18,7 +18,7 @@ pub fn establish_connection() -> SqliteConnection {
         CONFIG.token_manager_db_url.clone()
     );
     let database_url = &CONFIG.token_manager_db_url;
-    let connection_result = SqliteConnection::establish(&database_url);
+    let connection_result = SqliteConnection::establish(database_url);
 
     match connection_result {
         Ok(connection) => {
@@ -116,7 +116,7 @@ pub async fn generate_user_script(query: Query<ScriptParams>) -> Result<String, 
                 Ok(script)
             } else {
                 info!("No records were found");
-                return Ok("No records found for the given project and user.".into());
+                Ok("No records found for the given project and user.".into())
             }
         }
         Err(err) => {

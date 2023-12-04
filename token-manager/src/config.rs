@@ -2,7 +2,7 @@ use clap::Parser;
 use once_cell::sync::Lazy;
 use std::net::SocketAddr;
 
-pub(crate) static CONFIG: Lazy<Config> = Lazy::new(|| Config::parse());
+pub(crate) static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
 #[derive(Debug, Parser)]
 pub struct Config {

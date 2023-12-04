@@ -97,7 +97,7 @@ async fn send_token_registration_request(token_params: &Query<TokenParams>) -> R
 
     let request = OpalRequest {
         name: token_params.email.clone(),
-        token: token.clone(),
+        token,
         projects: token_params.project_id.clone(),
     };
 
@@ -107,9 +107,9 @@ async fn send_token_registration_request(token_params: &Query<TokenParams>) -> R
         .send()
         .await
     {
-        Ok(response) if response.status().is_success() => return Ok(response),
-        Ok(response) => return Err(anyhow::Error::msg(response.status())),
-        Err(e) => return Err(anyhow::Error::msg(e)),
+        Ok(response) if response.status().is_success() => Ok(response),
+        Ok(response) => Err(anyhow::Error::msg(response.status())),
+        Err(e) => Err(anyhow::Error::msg(e)),
     }
 }
 
