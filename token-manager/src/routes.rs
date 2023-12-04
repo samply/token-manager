@@ -1,5 +1,5 @@
 use crate::db::{check_db_status, check_project_status, generate_user_script};
-use crate::handlers::{opal_health_check, register_opal_token};
+use crate::handlers::register_opal_token;
 use crate::models::{ScriptParams, TokenParams};
 use axum::{
     extract::{rejection::QueryRejection, Path, Query},
@@ -14,10 +14,7 @@ async fn health_check() -> impl IntoResponse {
     // Check database connection
     let database_connection_status = check_db_status().is_ok();
 
-    // Check Opal health
-    let opal_health_status = opal_health_check().await.is_ok();
-
-    let status_code = if database_connection_status && opal_health_status {
+    let status_code = if database_connection_status {
         StatusCode::OK
     } else {
         StatusCode::SERVICE_UNAVAILABLE
@@ -26,7 +23,6 @@ async fn health_check() -> impl IntoResponse {
     let response_body = json!({
         "status": if status_code == StatusCode::OK { "ok" } else { "error" },
         "database_connection": if database_connection_status { "ok" } else { "down" },
-        "opal_health_check": if opal_health_status { "ok" } else { "down" },
     });
 
     (status_code, Json(response_body))
@@ -36,7 +32,7 @@ async fn create_token(
     token_params: Result<Query<TokenParams>, QueryRejection>,
 ) -> impl IntoResponse {
     match token_params {
-        Ok(token_params) => register_opal_token(token_params).await.into_response(),
+        Ok(token_params) => register_opal_token(token_params.0).await.into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             format!("Missing required token params parameters: {}", e),
@@ -81,5 +77,5 @@ pub fn configure_routes() -> Router {
         .route("/health", get(health_check))
         .route("/tokens", post(create_token))
         .route("/projects/:project_id/status", get(check_status))
-        .route("/scripts", post(generate_script))
+        .route("/scripts", get(generate_script))
 }

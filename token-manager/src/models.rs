@@ -1,13 +1,12 @@
 use crate::schema::tokens;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 pub struct TokenParams {
     pub email: String,
-    pub project_id: String,     // Comma-separated values
-    pub bridgehead_ids: String, // Comma-separated values
+    pub project_id: String,
+    pub bridgehead_ids: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -19,23 +18,7 @@ pub struct ScriptParams {
 #[derive(Serialize)]
 pub struct OpalRequest {
     pub name: String,
-    pub token: Uuid,
-    pub projects: String,
-}
-
-#[derive(Serialize)]
-pub struct TokenManagerResponse {
-    pub email: String,
-    pub token: Uuid,
-    pub projects: Vec<String>,    // projects are a list of strings
-    pub bridgeheads: Vec<String>, // bridgeheads are a list of strings
-    pub r_script: String,
-}
-
-#[derive(Serialize)]
-pub struct ProjectRequest {
-    pub name: String,
-    pub title: String,
+    pub project: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Queryable, Selectable)]

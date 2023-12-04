@@ -1,190 +1,77 @@
+use crate::config::BEAM_CLIENT;
 use crate::config::CONFIG;
 use crate::db::save_token_db;
-use crate::models::{NewToken, OpalRequest, ProjectRequest, TokenParams};
-use crate::utils::{generate_token, split_and_trim};
+use crate::models::{NewToken, OpalRequest, TokenParams};
 use anyhow::Result;
-use axum::{extract::Query, response::IntoResponse, Json};
+use async_sse::Event;
+use axum::http::HeaderValue;
+use futures::{StreamExt, io::BufReader};
+use tokio_util::compat::TokioAsyncReadCompatExt;
+use beam_lib::{AppId, TaskRequest, MsgId, TaskResult};
 use chrono::Local;
-use hyper::StatusCode;
-use log::error;
-use reqwest::{Client, Response};
-use serde_json::json;
-use tokio::time::{sleep, Duration};
-use tracing::info;
+use reqwest::{header, Method, StatusCode};
+use tracing::{error, info};
 
-const MAX_RETRIES: u32 = 3;
-
-pub async fn register_opal_token(token_params: Query<TokenParams>) -> impl IntoResponse {
-    let mut retries_remaining = MAX_RETRIES;
-
-    while retries_remaining > 0 {
-        match send_token_registration_request(&token_params).await {
-            Ok(response) if response.status().is_success() => {
-                return StatusCode::OK.into_response();
-            }
-
-            Ok(response) => {
-                if response.status().is_client_error() {
-                    let status = response.status();
-                    let text = response.text().await.unwrap_or_default();
-                    error!("Request failed. Status: {}. Error: {}", status, text);
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        format!("Request failed. Error: {}", text),
-                    )
-                        .into_response();
-                }
-
-                if retries_remaining > 1 && response.status().is_server_error() {
-                    error!(
-                        "Request failed. Retrying (attempt {}/{})",
-                        MAX_RETRIES - retries_remaining + 1,
-                        MAX_RETRIES
-                    );
-                    sleep(Duration::from_millis(5000)).await;
-                }
-            }
-            Err(e) => {
-                error!("Request error: {:?}", e);
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    format!("Request error: {:?}", e),
-                )
-                    .into_response();
-            }
+pub async fn register_opal_token(token_params: TokenParams) -> StatusCode {
+    match send_token_registration_request(&token_params).await {
+        Ok(_) => {
+            info!("Created token task {token_params:?}");
+            StatusCode::OK
         }
-        retries_remaining -= 1;
+        Err(e) => {
+            error!("Error creating token task: {e:?}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
     }
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        "All retries failed".to_string(),
-    )
-        .into_response()
 }
 
-async fn send_token_registration_request(token_params: &Query<TokenParams>) -> Result<Response> {
-    let bridgeheads = split_and_trim(&token_params.bridgehead_ids);
+async fn send_token_registration_request(token_params: &TokenParams) -> Result<()> {
+    let bridgeheads = &token_params.bridgehead_ids;
+    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
+    let bks: Vec<_> = bridgeheads.iter().map(|bk| AppId::new_unchecked(format!("dktk-opal.{bk}.{broker}"))).collect();
 
-    if bridgeheads.is_empty() {
-        return Err(anyhow::Error::msg("No bridgeheads to process"));
-    }
-
-    let client = Client::new();
-    let api_url = CONFIG.opal_api_url.clone();
     let today = Local::now();
     let formatted_date = today.format("%d-%m-%Y").to_string();
 
-    let token = generate_token();
-
-    for bridgehead in bridgeheads {
-        if !token_params.project_id.is_empty() {
-            if let Err(e) = create_project_if_missing(token_params.project_id.clone()).await {
-                return Err(anyhow::Error::msg(e));
-            }
-        }
-        let token_str = token.to_string();
+    let request = OpalRequest {
+        name: token_params.email.clone(),
+        project: token_params.project_id.clone(),
+    };
+    let task_id = MsgId::new();
+    let task = TaskRequest {
+        id: task_id,
+        from: CONFIG.beam_id.clone(),
+        to: bks,
+        body: request,
+        ttl: "60s".into(),
+        failure_strategy: beam_lib::FailureStrategy::Discard,
+        metadata: serde_json::Value::Null,
+    };
+    // TODO: Handle error
+    BEAM_CLIENT.post_task(&task).await?;
+    let res = BEAM_CLIENT
+        .raw_beam_request(Method::GET, &format!("/v1/tasks/{task_id}/results?wait_count={}", task.to.len()))
+        .header(
+            header::ACCEPT,
+            HeaderValue::from_static("text/event-stream"),
+        )
+        .send()
+        .await?;
+    let tokio_stream = res.upgrade().await?.compat();
+    let mut stream = async_sse::decode(BufReader::new(tokio_stream));
+    while let Some(Ok(Event::Message(msg))) =  stream.next().await {
+        let result: TaskResult<String> = serde_json::from_slice(msg.data())?;
+        let site_name = result.from.as_ref().split('.').nth(1).expect("Valid app id");
         let new_token = NewToken {
-            token: &token_str,
+            token: &result.body,
             project_id: &token_params.project_id,
-            bk: &bridgehead,
+            bk: &site_name,
             status: "CREATED",
             user_id: &token_params.email,
             created_at: &formatted_date,
         };
 
         save_token_db(new_token);
-    }
-
-    let request = OpalRequest {
-        name: token_params.email.clone(),
-        token,
-        projects: token_params.project_id.clone(),
     };
-
-    match client
-        .post(format!("{}/token", api_url))
-        .json(&request)
-        .send()
-        .await
-    {
-        Ok(response) if response.status().is_success() => Ok(response),
-        Ok(response) => Err(anyhow::Error::msg(response.status())),
-        Err(e) => Err(anyhow::Error::msg(e)),
-    }
-}
-
-async fn create_project_if_missing(project: String) -> reqwest::Result<reqwest::Response> {
-    let client = reqwest::Client::new();
-
-    let response = client
-        .get(format!(
-            "{}/project/{}",
-            CONFIG.opal_api_url.clone(),
-            project
-        ))
-        .send()
-        .await?;
-
-    let status = response.status();
-    info!("Status of Project {}: {}", project, status.clone());
-
-    match status {
-        reqwest::StatusCode::OK => {
-            info!("Project Exist!");
-        }
-        reqwest::StatusCode::NOT_FOUND => {
-            info!("Project NOT FOUND, PROCEED TO CREATE IT");
-            create_project(project).await?;
-        }
-        _ => {
-            error!("Error while trying to create new Project.");
-        }
-    }
-    Ok(response)
-}
-
-async fn create_project(project: String) -> reqwest::Result<Vec<reqwest::Response>> {
-    let client = reqwest::Client::new();
-
-    let request = ProjectRequest {
-        name: project.clone(),
-        title: project.clone(),
-    };
-
-    let response = client
-        .post(format!("{}/projects", CONFIG.opal_api_url.clone()))
-        .json(&request)
-        .send()
-        .await?;
-
-    let status = response.status();
-    info!("Status of Project {}: {}", project, status.clone());
-
-    Ok(vec![response])
-}
-
-pub async fn opal_health_check() -> Result<Json<serde_json::Value>, Box<dyn std::error::Error>> {
-    let client = reqwest::Client::new();
-
-    let response = client
-        .get(format!("{}/health", CONFIG.opal_api_url.clone()))
-        .send()
-        .await?;
-
-    if response.status().is_success() {
-        let json_response = json!({
-            "status": "success",
-            "message": "Opal service is up"
-        });
-        Ok(Json(json_response))
-    } else {
-        let error_message = format!(
-            "Opal service health check failed with status: {}",
-            response.status()
-        );
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            error_message,
-        )))
-    }
+    Ok(())
 }
