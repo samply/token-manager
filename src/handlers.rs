@@ -1,6 +1,6 @@
 use crate::config::BEAM_CLIENT;
 use crate::config::CONFIG;
-use crate::db::save_token_db;
+use crate::db::Db;
 use crate::models::{NewToken, OpalRequest, TokenParams};
 use anyhow::Result;
 use async_sse::Event;
@@ -12,8 +12,8 @@ use chrono::Local;
 use reqwest::{header, Method, StatusCode};
 use tracing::{error, info};
 
-pub async fn register_opal_token(token_params: TokenParams) -> StatusCode {
-    match send_token_registration_request(&token_params).await {
+pub async fn register_opal_token(db: Db, token_params: TokenParams) -> StatusCode {
+    match send_token_registration_request(db, &token_params).await {
         Ok(_) => {
             info!("Created token task {token_params:?}");
             StatusCode::OK
@@ -25,7 +25,7 @@ pub async fn register_opal_token(token_params: TokenParams) -> StatusCode {
     }
 }
 
-async fn send_token_registration_request(token_params: &TokenParams) -> Result<()> {
+async fn send_token_registration_request(mut db: Db, token_params: &TokenParams) -> Result<()> {
     let bridgeheads = &token_params.bridgehead_ids;
     let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
     let bks: Vec<_> = bridgeheads.iter().map(|bk| AppId::new_unchecked(format!("dktk-opal.{bk}.{broker}"))).collect();
@@ -71,7 +71,7 @@ async fn send_token_registration_request(token_params: &TokenParams) -> Result<(
             created_at: &formatted_date,
         };
 
-        save_token_db(new_token);
+        db.save_token_db(new_token);
     };
     Ok(())
 }

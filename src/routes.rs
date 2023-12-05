@@ -1,4 +1,4 @@
-use crate::db::{check_db_status, check_project_status, generate_user_script};
+use crate::db::Db;
 use crate::handlers::register_opal_token;
 use crate::models::{ScriptParams, TokenParams};
 use axum::{
@@ -10,29 +10,13 @@ use axum::{
 };
 use serde_json::json;
 
-async fn health_check() -> impl IntoResponse {
-    // Check database connection
-    let database_connection_status = check_db_status().is_ok();
-
-    let status_code = if database_connection_status {
-        StatusCode::OK
-    } else {
-        StatusCode::SERVICE_UNAVAILABLE
-    };
-
-    let response_body = json!({
-        "status": if status_code == StatusCode::OK { "ok" } else { "error" },
-        "database_connection": if database_connection_status { "ok" } else { "down" },
-    });
-
-    (status_code, Json(response_body))
-}
 
 async fn create_token(
     token_params: Result<Query<TokenParams>, QueryRejection>,
+    db: Db
 ) -> impl IntoResponse {
     match token_params {
-        Ok(token_params) => register_opal_token(token_params.0).await.into_response(),
+        Ok(token_params) => register_opal_token(db, token_params.0).await.into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
             format!("Missing required token params parameters: {}", e),
@@ -41,7 +25,7 @@ async fn create_token(
     }
 }
 
-async fn check_status(Path(project_id): Path<String>) -> impl IntoResponse {
+async fn check_status(mut db: Db, Path(project_id): Path<String>) -> impl IntoResponse {
     if project_id.is_empty() {
         let error_response = json!({
             "status": "error",
@@ -50,7 +34,7 @@ async fn check_status(Path(project_id): Path<String>) -> impl IntoResponse {
         return (StatusCode::BAD_REQUEST, Json(error_response)).into_response();
     }
 
-    match check_project_status(project_id).await {
+    match db.check_project_status(project_id).await {
         Ok(json) => (StatusCode::OK, json).into_response(),
         Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
     }
@@ -58,9 +42,10 @@ async fn check_status(Path(project_id): Path<String>) -> impl IntoResponse {
 
 async fn generate_script(
     script_params: Result<Query<ScriptParams>, QueryRejection>,
+    mut db: Db,
 ) -> impl IntoResponse {
     match script_params {
-        Ok(script_params) => match generate_user_script(script_params).await {
+        Ok(script_params) => match db.generate_user_script(script_params).await {
             Ok(script) => (StatusCode::OK, script).into_response(),
             Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         },
@@ -72,10 +57,10 @@ async fn generate_script(
     }
 }
 
-pub fn configure_routes() -> Router {
+pub fn configure_routes(pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::prelude::SqliteConnection>>) -> Router {
     Router::new()
-        .route("/health", get(health_check))
         .route("/tokens", post(create_token))
         .route("/projects/:project_id/status", get(check_status))
         .route("/scripts", get(generate_script))
+        .with_state(pool)
 }

@@ -12,18 +12,18 @@ use tracing::{info, Level};
 use tracing_subscriber::{fmt::SubscriberBuilder, EnvFilter};
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let env_filter = EnvFilter::from_default_env().add_directive(Level::INFO.into());
     let subscriber = SubscriberBuilder::default()
         .with_env_filter(env_filter)
         .finish();
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+    tracing::subscriber::set_global_default(subscriber)?;
 
     info!("Starting server token ON!");
-    let app = Router::new().nest("/api", configure_routes());
+    let app = Router::new().nest("/api", configure_routes(db::setup_db()?));
 
     axum::Server::bind(&CONFIG.addr)
         .serve(app.into_make_service())
-        .await
-        .unwrap();
+        .await?;
+    Ok(())
 }
