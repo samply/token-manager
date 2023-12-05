@@ -1,26 +1,20 @@
-# Compile Rust project
-# FROM rust:latest AS builder
-# WORKDIR /workdir
-# COPY . ./
+FROM lukemathwalker/cargo-chef:latest-rust-bookworm AS chef
+RUN apt install libsqlite3-dev
+WORKDIR /app
 
-# RUN cargo build --release
+FROM chef AS planner
+COPY . .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Create Final image
-#FROM gcr.io/distroless/cc-debian12
-#FROM debian:buster-slim
-#FROM ubuntu
-FROM debian
-#COPY --from=builder /workdir/target/release/token-manager /app/
-COPY ./data /app/data
-COPY ./target/release/token-manager /app/
-RUN chmod +x /app
+FROM chef AS builder 
+COPY --from=planner /app/recipe.json recipe.json
+# Build dependencies - this is the caching Docker layer!
+RUN cargo chef cook --release --recipe-path recipe.json
+# Build application
+COPY . .
+RUN cargo build --release --bin token-manager
 
-RUN apt-get update && apt-get install -y sqlite3 && apt clean && rm -rf /var/lib/apt/lists/*
-
-#RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
-# # Install dependencies
-# RUN apt-get update && \
-#     apt-get install -y sqlite3 libsqlite3-dev && \
-#     cargo install diesel_cli --no-default-features --features sqlite
-
-CMD ["./app/token-manager"]
+FROM gcr.io/distroless/cc-debian12 AS runtime
+COPY --from=builder /lib/x86_64-linux-gnu/libsqlite3.* /lib/x86_64-linux-gnu/
+COPY --from=builder /app/target/release/token-manager /usr/local/bin/
+ENTRYPOINT ["/usr/local/bin/token-manager"]
