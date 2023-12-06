@@ -19,6 +19,9 @@ pub struct Config {
     #[clap(env)]
     pub beam_secret: String,
 
+    #[clap(env, default_value = "dktk-opal")]
+    pub opal_beam_name: String,
+
     /// The app id of this application
     #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
     pub beam_id: AppId,

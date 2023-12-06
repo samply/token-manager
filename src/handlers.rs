@@ -18,7 +18,7 @@ use tracing::info;
 pub async fn send_token_registration_request(db: Db, token_params: TokenParams) -> Result<()> {
     let bridgeheads = &token_params.bridgehead_ids;
     let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
-    let bks: Vec<_> = bridgeheads.iter().map(|bk| AppId::new_unchecked(format!("dktk-opal.{bk}.{broker}"))).collect();
+    let bks: Vec<_> = bridgeheads.iter().map(|bk| AppId::new_unchecked(format!("{}.{bk}.{broker}", CONFIG.opal_beam_name))).collect();
 
     let request = OpalRequest {
         name: token_params.email.clone(),
@@ -35,9 +35,20 @@ pub async fn send_token_registration_request(db: Db, token_params: TokenParams) 
     };
     // TODO: Handle error
     BEAM_CLIENT.post_task(&task).await?;
-    info!("Created token task {token_params:?}");
+    info!("Created token task {task:#?}");
     tokio::task::spawn(save_tokens_from_beam(db, task, token_params));
     Ok(())
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+enum OpalResponse {
+    Err {
+        error: String,
+    },
+    Ok {
+        token: String,
+    }
 }
 
 async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams) {
@@ -62,7 +73,7 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
             warn!("{}", String::from_utf8_lossy(msg.data()));
             break;
         }
-        let result: TaskResult<String> = match serde_json::from_slice(msg.data()) {
+        let result: TaskResult<OpalResponse> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
             Err(e) => {
                 warn!("Failed to deserialize message {msg:?} into a result: {e}");
@@ -70,8 +81,15 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
             },
         };
         let site_name = result.from.as_ref().split('.').nth(1).expect("Valid app id");
+        let token = &match result.body {
+            OpalResponse::Err { error } => {
+                warn!("{} failed to create a token: {error}", result.from);
+                continue;
+            },
+            OpalResponse::Ok { token } => token,
+        };
         let new_token = NewToken {
-            token: &result.body,
+            token,
             project_id: &token_params.project_id,
             bk: &site_name,
             status: "CREATED",
