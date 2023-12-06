@@ -5,11 +5,11 @@ services:
     image: samply/token-manager
     ports:
       - 3030:3030
+    env_file:
+      - .env
+    # Override env
     environment:
       - BEAM_URL=http://proxy1:8081
-      - BEAM_ID=app1.proxy1.broker
-      - BEAM_SECRET=App1Secret
-      - TOKEN_MANAGER_DB_URL=./file.db
     networks:
       - dev_default
       - default
