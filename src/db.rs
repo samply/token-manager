@@ -138,13 +138,12 @@ impl Db {
 
 fn generate_r_script(script_lines: Vec<String>) -> String {
     let mut builder_script = String::from(
-        "
-        library(DSI)
-        library(DSOpal)
-        library(dsBaseClient)
+"library(DSI)
+library(DSOpal)
+library(dsBaseClient)
 
-        builder <- DSI::newDSLoginBuilder(.silent = FALSE)
-        ",
+builder <- DSI::newDSLoginBuilder(.silent = FALSE)
+",
     );
 
     // Append each line to the script.
@@ -155,10 +154,8 @@ fn generate_r_script(script_lines: Vec<String>) -> String {
 
     // Finish the script with the login and assignment commands.
     builder_script.push_str(
-        "
-        logindata <- builder$build()
-        connections <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = 'D')
-        ",
+"logindata <- builder$build()
+connections <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = 'D')\n",
     );
 
     builder_script

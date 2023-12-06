@@ -46,13 +46,13 @@ async fn generate_script(
     mut db: Db,
     script_params: Json<ScriptParams>,
 ) -> impl IntoResponse {
-        match db.generate_user_script(script_params.0).await {
-            Ok(script) => (StatusCode::OK, script).into_response(),
-            Err(e) => {
-                warn!("Error generating script: {e}");
-                StatusCode::INTERNAL_SERVER_ERROR.into_response()
-            },
-        }
+    match db.generate_user_script(script_params.0).await {
+        Ok(script) => (StatusCode::OK, script).into_response(),
+        Err(e) => {
+            warn!("Error generating script: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        },
+    }
 }
 
 pub fn configure_routes(pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::prelude::SqliteConnection>>) -> Router {
