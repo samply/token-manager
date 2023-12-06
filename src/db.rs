@@ -8,7 +8,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use serde_json::json;
-use tracing::error;
+use tracing::{error, warn};
 use tracing::info;
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -54,7 +54,7 @@ impl Db {
                 info!("New Token Saved in DB");
             }
             Err(error) => {
-                info!("Error connecting to {}", error);
+                warn!("Error connecting to {}", error);
             }
         }
     }

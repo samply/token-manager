@@ -40,7 +40,6 @@ pub async fn send_token_registration_request(db: Db, token_params: TokenParams) 
     Ok(())
 }
 
-#[tracing::instrument(skip(db))]
 async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams) {
     let today = Local::now();
     let formatted_date = today.format("%d-%m-%Y").to_string();
