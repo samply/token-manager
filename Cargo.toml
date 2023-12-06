@@ -8,8 +8,8 @@ edition = "2021"
 [dependencies]
 axum = "0.6"
 tokio = { version = "1.33.0", features = ["full", "macros"] }
-reqwest = { version = "0.11.14", default_features = false, features = ["json", "default-tls"] }
-serde_json = "1.0.91"
+reqwest = { version = "0.11", default_features = false, features = ["json", "default-tls", "stream"] }
+serde_json = "1.0"
 serde = { version = "1", features = ["derive"] }
 anyhow = { version = "1.0", default-features = false }
 chrono = "0.4"
@@ -19,11 +19,10 @@ diesel_migrations = { version = "2.1.0", features = ["sqlite"] }
 # Beam
 beam-lib = { git = "https://github.com/samply/beam", branch = "develop", features = ["http-util"] }
 async-sse = "5.1.0"
-futures = { version = "0.3" }
-tokio-util = { version = "0.7", features=["compat"] }
+futures-util = { version = "0.3", features = ["io"] }
 
 # Logging
-tracing = { version = "0.1.37", default_features = false }
+tracing = { version = "0.1" }
 tracing-subscriber = { version = "0.3.11", default_features = false, features = ["env-filter", "fmt"] }
 
 # Global variables

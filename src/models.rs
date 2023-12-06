@@ -15,7 +15,7 @@ pub struct ScriptParams {
     pub user: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct OpalRequest {
     pub name: String,
     pub project: String,

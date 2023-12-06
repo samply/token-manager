@@ -12,7 +12,7 @@ pub struct Config {
     pub addr: SocketAddr,
 
     /// Url of the local beam proxy which is required to have sockets enabled
-    #[clap(env, default_value = "http://beam-proxy:8081")]
+    #[clap(long, env, default_value = "http://beam-proxy:8081")]
     pub beam_url: Url,
 
     /// Beam api key

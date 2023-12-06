@@ -1,3 +1,5 @@
+use std::io;
+
 use crate::config::BEAM_CLIENT;
 use crate::config::CONFIG;
 use crate::db::Db;
@@ -5,41 +7,25 @@ use crate::models::{NewToken, OpalRequest, TokenParams};
 use anyhow::Result;
 use async_sse::Event;
 use axum::http::HeaderValue;
-use futures::{StreamExt, io::BufReader};
-use tokio_util::compat::TokioAsyncReadCompatExt;
 use beam_lib::{AppId, TaskRequest, MsgId, TaskResult};
+use futures_util::StreamExt;
+use futures_util::stream::TryStreamExt;
 use chrono::Local;
-use reqwest::{header, Method, StatusCode};
-use tracing::{error, info};
+use reqwest::{header, Method};
+use tracing::warn;
+use tracing::info;
 
-pub async fn register_opal_token(db: Db, token_params: TokenParams) -> StatusCode {
-    match send_token_registration_request(db, &token_params).await {
-        Ok(_) => {
-            info!("Created token task {token_params:?}");
-            StatusCode::OK
-        }
-        Err(e) => {
-            error!("Error creating token task: {e:?}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
-    }
-}
-
-async fn send_token_registration_request(mut db: Db, token_params: &TokenParams) -> Result<()> {
+pub async fn send_token_registration_request(db: Db, token_params: TokenParams) -> Result<()> {
     let bridgeheads = &token_params.bridgehead_ids;
     let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
     let bks: Vec<_> = bridgeheads.iter().map(|bk| AppId::new_unchecked(format!("dktk-opal.{bk}.{broker}"))).collect();
-
-    let today = Local::now();
-    let formatted_date = today.format("%d-%m-%Y").to_string();
 
     let request = OpalRequest {
         name: token_params.email.clone(),
         project: token_params.project_id.clone(),
     };
-    let task_id = MsgId::new();
     let task = TaskRequest {
-        id: task_id,
+        id: MsgId::new(),
         from: CONFIG.beam_id.clone(),
         to: bks,
         body: request,
@@ -49,18 +35,36 @@ async fn send_token_registration_request(mut db: Db, token_params: &TokenParams)
     };
     // TODO: Handle error
     BEAM_CLIENT.post_task(&task).await?;
+    info!("Created token task {token_params:?}");
+    tokio::task::spawn(save_tokens_from_beam(db, task, token_params));
+    Ok(())
+}
+
+#[tracing::instrument(skip(db))]
+async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams) {
+    let today = Local::now();
+    let formatted_date = today.format("%d-%m-%Y").to_string();
     let res = BEAM_CLIENT
-        .raw_beam_request(Method::GET, &format!("/v1/tasks/{task_id}/results?wait_count={}", task.to.len()))
+        .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
         .header(
             header::ACCEPT,
             HeaderValue::from_static("text/event-stream"),
         )
         .send()
-        .await?;
-    let tokio_stream = res.upgrade().await?.compat();
-    let mut stream = async_sse::decode(BufReader::new(tokio_stream));
+        .await.expect("Beam was reachable in the post request before this");
+    let mut stream = async_sse::decode(res
+        .bytes_stream()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        .into_async_read()
+    );
     while let Some(Ok(Event::Message(msg))) =  stream.next().await {
-        let result: TaskResult<String> = serde_json::from_slice(msg.data())?;
+        let result: TaskResult<String> = match serde_json::from_slice(msg.data()) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("Failed to deserialize message {msg:?} into a result: {e}");
+                continue;
+            },
+        };
         let site_name = result.from.as_ref().split('.').nth(1).expect("Valid app id");
         let new_token = NewToken {
             token: &result.body,
@@ -73,5 +77,4 @@ async fn send_token_registration_request(mut db: Db, token_params: &TokenParams)
 
         db.save_token_db(new_token);
     };
-    Ok(())
 }

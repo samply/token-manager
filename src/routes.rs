@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::handlers::register_opal_token;
+use crate::handlers::send_token_registration_request;
 use crate::models::{ScriptParams, TokenParams};
 use axum::{
     extract::Path,
@@ -9,14 +9,22 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
-use tracing::warn;
+use tracing::{warn, error};
 
 
 async fn create_token(
     db: Db,
     token_params: Json<TokenParams>,
 ) -> StatusCode {
-    register_opal_token(db, token_params.0).await
+    match send_token_registration_request(db, token_params.0).await {
+        Ok(_) => {
+            StatusCode::OK
+        }
+        Err(e) => {
+            error!("Error creating token task: {e:?}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
 }
 
 async fn check_status(mut db: Db, Path(project_id): Path<String>) -> impl IntoResponse {
