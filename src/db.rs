@@ -98,7 +98,7 @@ impl Db {
 
     pub async fn generate_user_script(
         &mut self,
-        query: Query<ScriptParams>,
+        query: ScriptParams,
     ) -> Result<String, String> {
         use crate::schema::tokens::dsl::*;
 

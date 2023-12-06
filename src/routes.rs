@@ -2,27 +2,21 @@ use crate::db::Db;
 use crate::handlers::register_opal_token;
 use crate::models::{ScriptParams, TokenParams};
 use axum::{
-    extract::{rejection::QueryRejection, Path, Query},
+    extract::Path,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
 use serde_json::json;
+use tracing::warn;
 
 
 async fn create_token(
-    token_params: Result<Query<TokenParams>, QueryRejection>,
-    db: Db
-) -> impl IntoResponse {
-    match token_params {
-        Ok(token_params) => register_opal_token(db, token_params.0).await.into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            format!("Missing required token params parameters: {}", e),
-        )
-            .into_response(),
-    }
+    db: Db,
+    token_params: Json<TokenParams>,
+) -> StatusCode {
+    register_opal_token(db, token_params.0).await
 }
 
 async fn check_status(mut db: Db, Path(project_id): Path<String>) -> impl IntoResponse {
@@ -41,20 +35,16 @@ async fn check_status(mut db: Db, Path(project_id): Path<String>) -> impl IntoRe
 }
 
 async fn generate_script(
-    script_params: Result<Query<ScriptParams>, QueryRejection>,
     mut db: Db,
+    script_params: Json<ScriptParams>,
 ) -> impl IntoResponse {
-    match script_params {
-        Ok(script_params) => match db.generate_user_script(script_params).await {
+        match db.generate_user_script(script_params.0).await {
             Ok(script) => (StatusCode::OK, script).into_response(),
-            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        },
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            format!("Missing required query parameters: {}", e),
-        )
-            .into_response(),
-    }
+            Err(e) => {
+                warn!("Error generating script: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            },
+        }
 }
 
 pub fn configure_routes(pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::prelude::SqliteConnection>>) -> Router {
