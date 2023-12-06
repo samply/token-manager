@@ -51,13 +51,18 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
             HeaderValue::from_static("text/event-stream"),
         )
         .send()
-        .await.expect("Beam was reachable in the post request before this");
+        .await
+        .expect("Beam was reachable in the post request before this");
     let mut stream = async_sse::decode(res
         .bytes_stream()
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
         .into_async_read()
     );
     while let Some(Ok(Event::Message(msg))) =  stream.next().await {
+        if msg.name() == "error" {
+            warn!("{}", String::from_utf8_lossy(msg.data()));
+            break;
+        }
         let result: TaskResult<String> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
             Err(e) => {

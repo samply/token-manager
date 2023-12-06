@@ -47,6 +47,7 @@ impl Db {
 
         match diesel::insert_into(tokens::table)
             .values(&token)
+            .on_conflict_do_nothing()
             .execute(&mut self.0)
         {
             Ok(_) => {
