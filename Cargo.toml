@@ -1,0 +1,33 @@
+[package]
+name = "token-manager"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = "0.6"
+tokio = { version = "1.33.0", features = ["full", "macros"] }
+reqwest = { version = "0.11", default_features = false, features = ["json", "default-tls", "stream"] }
+serde_json = "1.0"
+serde = { version = "1", features = ["derive"] }
+anyhow = { version = "1.0", default-features = false }
+chrono = "0.4"
+# Db
+diesel = { version = "2.1.4", features = ["sqlite", "r2d2"] }
+diesel_migrations = { version = "2.1.0", features = ["sqlite"] }
+# Beam
+beam-lib = { git = "https://github.com/samply/beam", branch = "develop", features = ["http-util"] }
+async-sse = "5.1.0"
+futures-util = { version = "0.3", features = ["io"] }
+
+# Logging
+tracing = { version = "0.1" }
+tracing-subscriber = { version = "0.3.11", default_features = false, features = ["env-filter", "fmt"] }
+
+# Global variables
+once_cell = "1.18"
+
+# Command Line Interface
+clap = { version = "4.0", default_features = false, features = ["std", "env", "derive"] }
