@@ -1,5 +1,4 @@
 FROM lukemathwalker/cargo-chef:latest-rust-bookworm AS chef
-RUN apt install libsqlite3-dev
 WORKDIR /app
 
 FROM chef AS planner
@@ -15,6 +14,5 @@ COPY . .
 RUN cargo build --release --bin token-manager
 
 FROM gcr.io/distroless/cc-debian12 AS runtime
-COPY --from=builder /lib/x86_64-linux-gnu/libsqlite3.* /lib/x86_64-linux-gnu/
 COPY --from=builder /app/target/release/token-manager /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/token-manager"]

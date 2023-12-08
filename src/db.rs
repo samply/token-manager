@@ -3,7 +3,7 @@ use crate::models::{NewToken, ScriptParams, TokenManager};
 use axum::async_trait;
 use axum::extract::{FromRequestParts, FromRef};
 use axum::http::request::Parts;
-use axum::{extract::Query, http::StatusCode, Json};
+use axum::{http::StatusCode, Json};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
