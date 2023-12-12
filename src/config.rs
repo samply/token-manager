@@ -19,7 +19,7 @@ pub struct Config {
     #[clap(env)]
     pub beam_secret: String,
 
-    #[clap(env, default_value = "dktk-opal")]
+    #[clap(env, default_value = "token-manager")]
     pub opal_beam_name: String,
 
     /// The app id of this application
