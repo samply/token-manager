@@ -1,15 +1,11 @@
 use crate::config::CONFIG;
 use crate::models::{NewToken, ScriptParams, TokenManager};
-use axum::async_trait;
-use axum::extract::{FromRequestParts, FromRef};
-use axum::http::request::Parts;
-use axum::{http::StatusCode, Json};
+use axum::{async_trait, extract::{FromRef, FromRequestParts}, http::{request::Parts, StatusCode}, Json};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use serde_json::json;
-use tracing::{error, warn};
-use tracing::info;
+use tracing::{error, warn, info};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -97,10 +93,7 @@ impl Db {
         }
     }
 
-    pub async fn generate_user_script(
-        &mut self,
-        query: ScriptParams,
-    ) -> Result<String, String> {
+    pub async fn generate_user_script(&mut self, query: ScriptParams) -> Result<String, String> {
         use crate::schema::tokens::dsl::*;
 
         let records = tokens
@@ -115,7 +108,7 @@ impl Db {
                 if !records.is_empty() {
                     for record in records {
                         info!("Records Extracted: {:?}", record);
-                        script_lines.push(format!("builder$append(server='DockerOpal', url='https://{}:8443/opal/', token='{}', table='{}', driver='OpalDriver', options = list(ssl_verifyhost=0,ssl_verifypeer=0))",
+                        script_lines.push(format!("builder$append(server='DockerOpal', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
                     record.bk , record.token, record.project_id
                     ));
                     }
@@ -138,12 +131,14 @@ impl Db {
 
 fn generate_r_script(script_lines: Vec<String>) -> String {
     let mut builder_script = String::from(
-"library(DSI)
+r#"library(DSI)
 library(DSOpal)
 library(dsBaseClient)
+set_config(use_proxy(url="http://beam-connect", port=8062))
+set_config( config( ssl_verifyhost = 0L, ssl_verifypeer = 0L ) )
 
 builder <- DSI::newDSLoginBuilder(.silent = FALSE)
-",
+"#,
     );
 
     // Append each line to the script.
@@ -154,7 +149,7 @@ builder <- DSI::newDSLoginBuilder(.silent = FALSE)
 
     // Finish the script with the login and assignment commands.
     builder_script.push_str(
-"logindata <- builder$build()
+        "logindata <- builder$build()
 connections <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = 'D')\n",
     );
 
