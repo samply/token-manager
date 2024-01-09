@@ -5,6 +5,7 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use serde_json::json;
+use serde_json::Value as JsonValue;
 use tracing::{error, warn, info};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -69,11 +70,19 @@ impl Db {
             Ok(records) => {
                 if !records.is_empty() {
                     info!("Project found with project_id: {:?}", &records);
-                    let response = json!({
-                        "status": "success",
-                        "data": records
-                    });
-                    Ok(Json(response))
+
+                    let transformed_records: Vec<_> = records.into_iter().map(|record| {
+                        json!({
+                            "project_id": record.project_id,
+                            "bk": record.bk,
+                            "user_id": record.user_id,
+                            "created_at": record.created_at,
+                            "project_status": record.status,
+                            "token_status": record.status,
+                        })
+                    }).collect();
+
+                    Ok(Json(JsonValue::Array(transformed_records)))
                 } else {
                     info!("Project not found with project_id: {}", project);
                     let error_response = r#"{
