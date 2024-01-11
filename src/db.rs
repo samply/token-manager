@@ -5,7 +5,6 @@ use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use serde_json::json;
-use serde_json::Value as JsonValue;
 use tracing::{error, warn, info};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -59,30 +58,31 @@ impl Db {
     pub async fn check_project_status(
         &mut self,
         project: String,
+        bridgehead: String
     ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
         use crate::schema::tokens::dsl::*;
 
         match tokens
             .filter(project_id.eq(&project))
+            .filter(bk.eq(&bridgehead))
             .select(TokenManager::as_select())
             .load::<TokenManager>(&mut self.0)
         {
             Ok(records) => {
                 if !records.is_empty() {
                     info!("Project found with project_id: {:?}", &records);
-
-                    let transformed_records: Vec<_> = records.into_iter().map(|record| {
-                        json!({
+                    let record = &records[0];
+                    
+                    let response = json!({
                             "project_id": record.project_id,
                             "bk": record.bk,
                             "user_id": record.user_id,
                             "created_at": record.created_at,
                             "project_status": record.status,
                             "token_status": record.status,
-                        })
-                    }).collect();
+                        });
 
-                    Ok(Json(JsonValue::Array(transformed_records)))
+                    Ok(Json(response))
                 } else {
                     info!("Project not found with project_id: {}", project);
                     let error_response = r#"{
