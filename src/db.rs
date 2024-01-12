@@ -55,6 +55,53 @@ impl Db {
         }
     }
 
+    pub fn update_token_db(&mut self, token_update: NewToken) {
+        use crate::schema::tokens::dsl::*;
+
+        let target = tokens.filter(
+            user_id.eq(&token_update.user_id)
+                .and(project_id.eq(&token_update.project_id))
+                .and(bk.eq(&token_update.bk))
+        );
+    
+        match diesel::update(target)
+            .set((
+                token.eq(token_update.token),
+                status.eq("UPDATED"),
+                created_at.eq(&token_update.created_at),
+            ))
+            .execute(&mut self.0)
+        {
+            Ok(_) => {
+                info!("Token updated in DB");
+            }
+            Err(error) => {
+                warn!("Error updating token: {}", error);
+            }
+        }
+    }
+
+    pub fn delete_token_db(&mut self, 
+        user_id: String,
+        project: String
+    ) {
+        use crate::schema::tokens::dsl::*;
+    
+        let target = tokens.filter(
+            user_id.eq(&user_id)
+                .and(project_id.eq(&project_id))
+        );
+    
+        match diesel::delete(target).execute(&mut self.0) {
+            Ok(_) => {
+                info!("Token deleted from DB");
+            }
+            Err(error) => {
+                warn!("Error deleting token: {}", error);
+            }
+        }
+    }
+
     pub async fn check_project_status(
         &mut self,
         project: String,
