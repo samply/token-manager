@@ -3,6 +3,7 @@ use std::io;
 use crate::config::BEAM_CLIENT;
 use crate::config::CONFIG;
 use crate::db::Db;
+use crate::models::ScriptParams;
 use crate::models::{NewToken, OpalRequest, TokenParams};
 use anyhow::Result;
 use async_sse::Event;
@@ -96,6 +97,36 @@ pub async fn refresh_token_request(db: Db, token_params: TokenParams) -> Result<
     Ok(())
 }
 
+pub async fn check_project_request(token_params: TokenParams) -> Result<Vec<String>, anyhow::Error> {
+    let bridgeheads = &token_params.bridgehead_ids;
+    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
+    let bks: Vec<_> = bridgeheads.iter().map(|bk| AppId::new_unchecked(format!("{}.{bk}.{broker}", CONFIG.opal_beam_name))).collect();
+
+    let request = OpalRequest {
+        request_type: "STATUS".to_string(),
+        name: token_params.email.clone(),
+        project: token_params.project_id.clone(),
+    };
+
+    let task = TaskRequest {
+        id: MsgId::new(),
+        from: CONFIG.beam_id.clone(),
+        to: bks,
+        body: request,
+        ttl: "60s".into(),
+        failure_strategy: beam_lib::FailureStrategy::Discard,
+        metadata: serde_json::Value::Null,
+    };
+    // TODO: Handle error
+    BEAM_CLIENT.post_task(&task).await?;
+    info!("Check Project Status  {task:#?}");
+
+    // Spawn the task and await its completion
+    let handle = tokio::task::spawn(status_project_from_beam(task, token_params));
+    let result = handle.await?;
+    result
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(untagged)]
 enum OpalResponse {
@@ -104,6 +135,17 @@ enum OpalResponse {
     },
     Ok {
         token: String,
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(untagged)]
+enum OpalProjectResponse {
+    Err {
+        error: String,
+    },
+    Ok {
+        tables: Vec<String>,
     }
 }
 
@@ -205,4 +247,51 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
 
         db.update_token_db(new_token);
     };
+}
+
+async fn status_project_from_beam(task: TaskRequest<OpalRequest>, token_params: TokenParams) -> Result<Vec<String>, anyhow::Error> {
+    let today = Local::now();
+    let formatted_date = today.format("%d-%m-%Y").to_string();
+    let res = BEAM_CLIENT
+        .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
+        .header(
+            header::ACCEPT,
+            HeaderValue::from_static("text/event-stream"),
+        )
+        .send()
+        .await
+        .expect("Beam was reachable in the post request before this");
+    let mut stream = async_sse::decode(res
+        .bytes_stream()
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        .into_async_read()
+    );
+    while let Some(Ok(Event::Message(msg))) =  stream.next().await {
+        if msg.name() == "error" {
+            warn!("{}", String::from_utf8_lossy(msg.data()));
+            break;
+        }
+
+        let result: TaskResult<OpalProjectResponse> = match serde_json::from_slice(msg.data()) {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("Failed to deserialize message {msg:?} into a result: {e}");
+                continue;
+            },
+        };
+        
+        let site_name = result.from.as_ref().split('.').nth(1).expect("Valid app id");
+        let tables = &match result.body {
+            OpalProjectResponse::Err { error } => {
+                warn!("{} failed to update a token: {error}", result.from);
+                continue;
+            },
+            OpalProjectResponse::Ok { tables } => tables,
+        };
+        
+        info!("Check Project Status From Beam {tables:#?}");
+
+        return Ok(tables.clone());
+    };
+    Err(anyhow::Error::msg("No valid result obtained from the stream"))
 }

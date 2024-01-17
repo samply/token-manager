@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request};
+use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request, check_project_request};
 use crate::models::{ScriptParams, TokenParams};
 use axum::{
     extract::Path,
@@ -44,7 +44,7 @@ async fn check_status(mut db: Db, Path((project_id, bk)): Path<(String, String)>
 
 async fn generate_script(
     mut db: Db,
-    script_params: Json<ScriptParams>,
+    script_params: Json<TokenParams>,
 ) -> impl IntoResponse {
     match db.generate_user_script(script_params.0).await {
         Ok(script) => (StatusCode::OK, script).into_response(),

@@ -1,5 +1,6 @@
 use crate::config::CONFIG;
-use crate::models::{NewToken, ScriptParams, TokenManager};
+use crate::handlers::check_project_request;
+use crate::models::{NewToken, ScriptParams, TokenManager, TokenParams};
 use axum::{async_trait, extract::{FromRef, FromRequestParts}, http::{request::Parts, StatusCode}, Json};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
@@ -149,41 +150,57 @@ impl Db {
         }
     }
 
-    pub async fn generate_user_script(&mut self, query: ScriptParams) -> Result<String, String> {
+    pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {
         use crate::schema::tokens::dsl::*;
-
-        let records = tokens
-            .filter(project_id.eq(&query.project)) // Match project_id from the query parameters
-            .filter(user_id.eq(&query.user)) // Match user_id from the query parameters
-            .select(TokenManager::as_select())
-            .load::<TokenManager>(&mut self.0);
-
-        match records {
-            Ok(records) => {
-                let mut script_lines = Vec::new();
-                if !records.is_empty() {
-                    for record in records {
-                        info!("Records Extracted: {:?}", record);
-                        script_lines.push(format!("builder$append(server='DockerOpal', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
-                    record.bk , record.token, record.project_id
-                    ));
+    
+        let tables_result = check_project_request(query.clone()).await; // Await the future here
+    
+        // Initialize script lines vector
+        let mut script_lines = Vec::new();
+    
+        // First check if tables_result is Ok and records are available
+        if let Ok(tables) = tables_result {
+            info!("Result from status_project_from_beam: {:?}", tables);
+    
+            let records = tokens
+                .filter(project_id.eq(&query.project_id))
+                .filter(user_id.eq(&query.email))
+                .select(TokenManager::as_select())
+                .load::<TokenManager>(&mut self.0);
+    
+            match records {
+                Ok(records) => {
+                    if !records.is_empty() {
+                        // Nested loop: For each table, loop through each record
+                        for record in &records {
+                            for table in &tables {
+                                script_lines.push(format!(
+                                    "builder$append(server='DockerOpal', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
+                                    record.bk, record.token, table
+                                ));
+                            }
+                        }
+                        let script = generate_r_script(script_lines);
+                        info!("Script Generated: {:?}", script);
+                        Ok(script)
+                    } else {
+                        info!("No records were found");
+                        Ok("No records found for the given project and user.".into())
                     }
-
-                    let script = generate_r_script(script_lines);
-                    info!("Script Generated: {:?}", script);
-                    Ok(script)
-                } else {
-                    info!("No records were found");
-                    Ok("No records found for the given project and user.".into())
+                }
+                Err(err) => {
+                    error!("Error loading records: {}", err);
+                    Err(format!("Error loading records: {}", err))
                 }
             }
-            Err(err) => {
-                error!("Error loading records: {}", err);
-                Err(format!("Error loading records: {}", err))
+        } else {
+            if let Err(e) = tables_result {
+                info!("Error in status_project_from_beam: {:?}", e);
             }
+            Err("Error obtaining table names.".into())
         }
     }
-}
+}    
 
 fn generate_r_script(script_lines: Vec<String>) -> String {
     let mut builder_script = String::from(
