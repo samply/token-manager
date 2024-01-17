@@ -2,7 +2,7 @@ use crate::schema::tokens;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct TokenParams {
     pub email: String,
     pub project_id: String,
