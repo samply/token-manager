@@ -3,7 +3,7 @@ use std::io;
 use crate::config::BEAM_CLIENT;
 use crate::config::CONFIG;
 use crate::db::Db;
-use crate::models::ScriptParams;
+use crate::enums::{OpalResponse, OpalProjectResponse};
 use crate::models::{NewToken, OpalRequest, TokenParams};
 use anyhow::Result;
 use async_sse::Event;
@@ -125,28 +125,6 @@ pub async fn check_project_request(token_params: TokenParams) -> Result<Vec<Stri
     let handle = tokio::task::spawn(status_project_from_beam(task, token_params));
     let result = handle.await?;
     result
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(untagged)]
-enum OpalResponse {
-    Err {
-        error: String,
-    },
-    Ok {
-        token: String,
-    }
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(untagged)]
-enum OpalProjectResponse {
-    Err {
-        error: String,
-    },
-    Ok {
-        tables: Vec<String>,
-    }
 }
 
 async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams) {
