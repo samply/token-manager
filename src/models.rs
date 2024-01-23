@@ -4,15 +4,15 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct TokenParams {
-    pub user: String,
+    pub user_id: String,
     pub project_id: String,
     pub bridgehead_ids: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct ScriptParams {
-    pub project: String,
-    pub user: String,
+    pub project_id: String,
+    pub user_id: String,
 }
 
 #[derive(Serialize, Debug)]
