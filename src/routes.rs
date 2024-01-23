@@ -89,7 +89,7 @@ pub fn configure_routes(pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager
     Router::new()
         .route("/tokens", post(create_token))
         .route("/projects/:project_id/status/:bk", get(check_status))
-        .route("/scripts", get(generate_script))
+        .route("/scripts", post(generate_script))
         .route("/refreshToken", put(refresh_token))
         .route("/projects", delete(remove_project_and_token)) 
         .with_state(pool)

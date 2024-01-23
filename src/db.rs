@@ -164,7 +164,7 @@ impl Db {
     
             let records = tokens
                 .filter(project_id.eq(&query.project_id))
-                .filter(user_id.eq(&query.user))
+                .filter(user_id.eq(&query.user_id))
                 .select(TokenManager::as_select())
                 .load::<TokenManager>(&mut self.0);
     

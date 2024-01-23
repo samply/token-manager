@@ -23,7 +23,7 @@ pub async fn send_token_registration_request(db: Db, token_params: TokenParams) 
 
     let request = OpalRequest {
         request_type: "CREATE".to_string(),
-        name: token_params.user.clone(),
+        name: token_params.user_id.clone(),
         project: token_params.project_id.clone(),
     };
 
@@ -50,7 +50,7 @@ pub async fn remove_project_and_tokens_request(mut db: Db, token_params: TokenPa
 
     let request = OpalRequest {
         request_type: "DELETE".to_string(),
-        name: token_params.user.clone(),
+        name: token_params.user_id.clone(),
         project: token_params.project_id.clone(),
     };
 
@@ -66,7 +66,7 @@ pub async fn remove_project_and_tokens_request(mut db: Db, token_params: TokenPa
     // TODO: Handle error
     BEAM_CLIENT.post_task(&task).await?;
     info!("Remove Project and Token request {task:#?}");
-    db.delete_token_db(token_params.user.clone(), token_params.project_id);
+    db.delete_token_db(token_params.user_id.clone(), token_params.project_id);
     Ok(())
 }
 
@@ -77,7 +77,7 @@ pub async fn refresh_token_request(db: Db, token_params: TokenParams) -> Result<
 
     let request = OpalRequest {
         request_type: "UPDATE".to_string(),
-        name: token_params.user.clone(),
+        name: token_params.user_id.clone(),
         project: token_params.project_id.clone(),
     };
 
@@ -104,7 +104,7 @@ pub async fn check_project_request(token_params: TokenParams) -> Result<Vec<Stri
 
     let request = OpalRequest {
         request_type: "STATUS".to_string(),
-        name: token_params.user.clone(),
+        name: token_params.user_id.clone(),
         project: token_params.project_id.clone(),
     };
 
@@ -169,7 +169,7 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
             project_id: &token_params.project_id,
             bk: &site_name,
             status: "CREATED",
-            user_id: &token_params.user,
+            user_id: &token_params.user_id,
             created_at: &formatted_date,
         };
 
@@ -219,7 +219,7 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
             project_id: &token_params.project_id,
             bk: &site_name,
             status: "CREATED",
-            user_id: &token_params.user,
+            user_id: &token_params.user_id,
             created_at: &formatted_date,
         };
 
