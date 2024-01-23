@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct TokenParams {
-    pub email: String,
+    pub user: String,
     pub project_id: String,
     pub bridgehead_ids: Vec<String>,
 }
