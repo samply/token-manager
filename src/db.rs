@@ -1,6 +1,6 @@
 use crate::config::CONFIG;
 use crate::handlers::check_project_request;
-use crate::models::{NewToken, ScriptParams, TokenManager, TokenParams};
+use crate::models::{NewToken, TokenManager, TokenParams};
 use axum::{async_trait, extract::{FromRef, FromRequestParts}, http::{request::Parts, StatusCode}, Json};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
@@ -12,7 +12,7 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 pub fn setup_db() -> anyhow::Result<Pool<ConnectionManager<SqliteConnection>>> {
     let pool = Pool::new(ConnectionManager::<SqliteConnection>::new(
-        &CONFIG.token_manager_db_url,
+        &CONFIG.token_manager_db_path,
     ))?;
     info!("Running migrations");
     pool.get()?.run_pending_migrations(MIGRATIONS).unwrap();

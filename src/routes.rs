@@ -1,6 +1,6 @@
 use crate::db::Db;
-use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request, check_project_request};
-use crate::models::{ScriptParams, TokenParams};
+use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request};
+use crate::models::TokenParams;
 use axum::{
     extract::Path,
     http::StatusCode,
