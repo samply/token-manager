@@ -1,5 +1,6 @@
 use crate::config::CONFIG;
-use crate::handlers::check_project_request;
+use crate::enums::OpalProjectStatusResponse;
+use crate::handlers::{fetch_project_tables_request, check_project_status_request};
 use crate::models::{NewToken, TokenManager, TokenParams};
 use axum::{async_trait, extract::{FromRef, FromRequestParts}, http::{request::Parts, StatusCode}, Json};
 use diesel::prelude::*;
@@ -68,7 +69,7 @@ impl Db {
         match diesel::update(target)
             .set((
                 token.eq(token_update.token),
-                status.eq("UPDATED"),
+                token_status.eq("UPDATED"),
                 created_at.eq(&token_update.created_at),
             ))
             .execute(&mut self.0)
@@ -110,6 +111,20 @@ impl Db {
     ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
         use crate::schema::tokens::dsl::*;
 
+        let project_status_result = check_project_status_request(project.clone(), bridgehead.clone()).await;
+
+        let status_result = match project_status_result {
+            Ok(OpalProjectStatusResponse::Ok { status }) => status, 
+            Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
+                let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+                return Err((status,  error));
+            },
+            Err(e) => {
+                eprintln!("Error retrieving project status: {:?}", e);
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+            }
+        };
+        
         match tokens
             .filter(project_id.eq(&project))
             .filter(bk.eq(&bridgehead))
@@ -126,8 +141,8 @@ impl Db {
                             "bk": record.bk,
                             "user_id": record.user_id,
                             "created_at": record.created_at,
-                            "project_status": record.status,
-                            "token_status": record.status,
+                            "project_status": status_result,
+                            "token_status": record.token_status,
                         });
 
                     Ok(Json(response))
@@ -153,7 +168,7 @@ impl Db {
     pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {
         use crate::schema::tokens::dsl::*;
     
-        let tables_result = check_project_request(query.clone()).await; // Await the future here
+        let tables_result = fetch_project_tables_request(query.clone()).await; 
     
         // Initialize script lines vector
         let mut script_lines = Vec::new();
@@ -175,13 +190,12 @@ impl Db {
                         for record in &records {
                             for table in &tables {
                                 script_lines.push(format!(
-                                    "builder$append(server='DockerOpal', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
-                                    record.bk, record.token, table
+                                    "builder$append(server='{}', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
+                                    record.bk, record.bk, record.token, table
                                 ));
                             }
                         }
                         let script = generate_r_script(script_lines);
-                        info!("Script Generated: {:?}", script);
                         Ok(script)
                     } else {
                         info!("No records were found");
