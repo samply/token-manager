@@ -1,5 +1,6 @@
 use crate::db::Db;
 use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request};
+use crate::enums::OpalResponse;
 use crate::models::TokenParams;
 use axum::{
     extract::Path,
@@ -15,17 +16,23 @@ use tracing::{warn, error};
 async fn create_token(
     db: Db,
     token_params: Json<TokenParams>,
-) -> StatusCode {
+) -> impl IntoResponse {
     match send_token_registration_request(db, token_params.0).await {
-        Ok(_) => {
-            StatusCode::OK
-        }
+        Ok(OpalResponse::Ok { .. }) => {
+            StatusCode::OK.into_response()
+        },
+        Ok(OpalResponse::Err { status_code, error }) => {
+            error!("Error creating token task: {error}");
+            let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            (status, Json(json!({ "error": error }))).into_response()
+        },
         Err(e) => {
-            error!("Error creating token task: {e:?}");
-            StatusCode::INTERNAL_SERVER_ERROR
+            error!("Unhandled error: {e:?}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
+
 
 async fn check_status(mut db: Db, Path((project_id, bk)): Path<(String, String)>) -> impl IntoResponse {
     if project_id.is_empty() {

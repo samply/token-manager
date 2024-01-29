@@ -18,8 +18,8 @@ pub struct ScriptParams {
 #[derive(Serialize, Debug)]
 pub struct OpalRequest {
     pub request_type: String,
-    pub name: String,
-    pub project: String,
+    pub name: Option<String>,
+    pub project: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Queryable, Selectable)]
@@ -29,8 +29,9 @@ pub struct TokenManager {
     pub id: i32,
     pub token: String,
     pub project_id: String,
+    pub project_status: String,
     pub bk: String,
-    pub status: String,
+    pub token_status: String,
     pub user_id: String,
     pub created_at: String,
 }
@@ -40,8 +41,9 @@ pub struct TokenManager {
 pub struct NewToken<'a> {
     pub token: &'a str,
     pub project_id: &'a str,
+    pub project_status: &'a str,
     pub bk: &'a str,
-    pub status: &'a str,
+    pub token_status: &'a str,
     pub user_id: &'a str,
     pub created_at: &'a str,
 }
