@@ -84,19 +84,36 @@ impl Db {
     }
 
     pub fn delete_token_db(&mut self, 
-        user_id: String,
         project: String
     ) {
         use crate::schema::tokens::dsl::*;
     
         let target = tokens.filter(
-            user_id.eq(&user_id)
-                .and(project_id.eq(&project_id))
+            project_id.eq(&project)
         );
     
         match diesel::delete(target).execute(&mut self.0) {
             Ok(_) => {
-                info!("Token deleted from DB");
+                info!("Project and Tokens deleted from DB");
+            }
+            Err(error) => {
+                warn!("Error deleting token: {}", error);
+            }
+        }
+    }
+
+    pub fn delete_user_db(&mut self, 
+        user: String
+    ) {
+        use crate::schema::tokens::dsl::*;
+    
+        let target = tokens.filter(
+            user_id.eq(&user)
+        );
+    
+        match diesel::delete(target).execute(&mut self.0) {
+            Ok(_) => {
+                info!("Tokens deleted from DB");
             }
             Err(error) => {
                 warn!("Error deleting token: {}", error);
