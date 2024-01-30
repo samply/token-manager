@@ -17,29 +17,16 @@ use tracing::warn;
 use tracing::info;
 
 pub async fn send_token_registration_request(db: Db, token_params: TokenParams) -> Result<OpalResponse> {
-    let bridgeheads = &token_params.bridgehead_ids;
-    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
-    let bks: Vec<_> = bridgeheads.iter().map(|bk| AppId::new_unchecked(format!("{}.{bk}.{broker}", CONFIG.opal_beam_name))).collect();
-
-    let request = OpalRequest {
-        request_type: OpalRequestType::CREATE.to_string(),
-        name:  Some(token_params.user_id.clone().to_string()),
-        project: Some(token_params.project_id.clone().to_string()),
-    };
-
-    let task = TaskRequest {
-        id: MsgId::new(),
-        from: CONFIG.beam_id.clone(),
-        to: bks,
-        body: request,
-        ttl: "60s".into(),
-        failure_strategy: beam_lib::FailureStrategy::Discard,
-        metadata: serde_json::Value::Null,
-    };
-
-    BEAM_CLIENT.post_task(&task).await?;
+    let task = create_and_send_task_request(
+        OpalRequestType::CREATE,
+        Some(token_params.user_id.to_string()),
+        Some(token_params.project_id.to_string()),
+        Some(&token_params.bridgehead_ids),
+        None
+    ).await?;
+    
     info!("Created token task {task:#?}");
-
+ 
     match save_tokens_from_beam(db, task, token_params).await {
         Ok(response) => Ok(response),
         Err(e) => {
@@ -49,26 +36,14 @@ pub async fn send_token_registration_request(db: Db, token_params: TokenParams) 
 }
 
 pub async fn remove_project_and_tokens_request(mut db: Db, project_id: String, bridgehead: String) -> Result<OpalProjectStatusResponse>  {
-    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
-    let bk: Vec<AppId> = vec![AppId::new_unchecked(format!("{}.{bridgehead}.{broker}", CONFIG.opal_beam_name))];
+    let task = create_and_send_task_request(
+        OpalRequestType::DELETE,
+        None,
+        Some(project_id.clone()),
+        None,
+        Some(bridgehead)
+    ).await?;
 
-    let request = OpalRequest {
-        request_type: OpalRequestType::DELETE.to_string(),
-        name:  None,
-        project: Some(project_id.clone().to_string()),
-    };
-
-    let task = TaskRequest {
-        id: MsgId::new(),
-        from: CONFIG.beam_id.clone(),
-        to: bk,
-        body: request,
-        ttl: "60s".into(),
-        failure_strategy: beam_lib::FailureStrategy::Discard,
-        metadata: serde_json::Value::Null,
-    };
-
-    BEAM_CLIENT.post_task(&task).await?;
     info!("Remove Project and Token request {task:#?}");
 
     match remove_project_and_tokens_from_beam(task).await {
@@ -83,26 +58,14 @@ pub async fn remove_project_and_tokens_request(mut db: Db, project_id: String, b
 }
 
 pub async fn remove_tokens_request(mut db: Db, user_id: String, bridgehead: String) -> Result<OpalProjectStatusResponse>  {
-    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
-    let bk: Vec<AppId> = vec![AppId::new_unchecked(format!("{}.{bridgehead}.{broker}", CONFIG.opal_beam_name))];
+    let task = create_and_send_task_request(
+        OpalRequestType::DELETE,
+        Some(user_id.clone().to_string()),
+        None,
+        None,
+        Some(bridgehead)
+    ).await?;
 
-    let request = OpalRequest {
-        request_type: OpalRequestType::DELETE.to_string(),
-        name:  Some(user_id.clone().to_string()),
-        project: None,
-    };
-
-    let task = TaskRequest {
-        id: MsgId::new(),
-        from: CONFIG.beam_id.clone(),
-        to: bk,
-        body: request,
-        ttl: "60s".into(),
-        failure_strategy: beam_lib::FailureStrategy::Discard,
-        metadata: serde_json::Value::Null,
-    };
-
-    BEAM_CLIENT.post_task(&task).await?;
     info!("Remove Tokens request {task:#?}");
 
     match remove_tokens_from_beam(task).await {
@@ -117,27 +80,14 @@ pub async fn remove_tokens_request(mut db: Db, user_id: String, bridgehead: Stri
 }
 
 pub async fn refresh_token_request(db: Db, token_params: TokenParams) -> Result<OpalResponse> {
-    let bridgeheads = &token_params.bridgehead_ids;
-    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
-    let bks: Vec<_> = bridgeheads.iter().map(|bk| AppId::new_unchecked(format!("{}.{bk}.{broker}", CONFIG.opal_beam_name))).collect();
+    let task = create_and_send_task_request(
+        OpalRequestType::UPDATE,
+        Some(token_params.user_id.clone().to_string()),
+        Some(token_params.project_id.clone().to_string()),
+        Some(&token_params.bridgehead_ids),
+        None
+    ).await?;
 
-    let request = OpalRequest {
-        request_type: OpalRequestType::UPDATE.to_string(),
-        name:  Some(token_params.user_id.clone().to_string()),
-        project: Some(token_params.project_id.clone().to_string()),
-    };
-
-    let task = TaskRequest {
-        id: MsgId::new(),
-        from: CONFIG.beam_id.clone(),
-        to: bks,
-        body: request,
-        ttl: "60s".into(),
-        failure_strategy: beam_lib::FailureStrategy::Discard,
-        metadata: serde_json::Value::Null,
-    };
-
-    BEAM_CLIENT.post_task(&task).await?;
     info!("Refresh token task  {task:#?}");
 
     match update_tokens_from_beam(db, task, token_params).await {
@@ -149,56 +99,30 @@ pub async fn refresh_token_request(db: Db, token_params: TokenParams) -> Result<
 }
 
 pub async fn fetch_project_tables_request(token_params: TokenParams) -> Result<Vec<String>, anyhow::Error> {
-    let bridgeheads = &token_params.bridgehead_ids;
-    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
-    let bks: Vec<_> = bridgeheads.iter().map(|bk| AppId::new_unchecked(format!("{}.{bk}.{broker}", CONFIG.opal_beam_name))).collect();
+    let task = create_and_send_task_request(
+        OpalRequestType::SCRIPT,
+        Some(token_params.user_id.clone().to_string()),
+        Some(token_params.project_id.clone().to_string()),
+        Some(&token_params.bridgehead_ids),
+        None
+    ).await?;
 
-    let request = OpalRequest {
-        request_type: OpalRequestType::SCRIPT.to_string(),
-        name:  Some(token_params.user_id.clone().to_string()),
-        project: Some(token_params.project_id.clone().to_string()),
-    };
-
-    let task = TaskRequest {
-        id: MsgId::new(),
-        from: CONFIG.beam_id.clone(),
-        to: bks,
-        body: request,
-        ttl: "60s".into(),
-        failure_strategy: beam_lib::FailureStrategy::Discard,
-        metadata: serde_json::Value::Null,
-    };
-    // TODO: Handle error
-    BEAM_CLIENT.post_task(&task).await?;
     info!("Fetch Project Tables Status  {task:#?}");
 
-    // Spawn the task and await its completion
     let handle = tokio::task::spawn(fetch_project_tables_from_beam(task));
     let result = handle.await?;
     result
 }
 
 pub async fn check_project_status_request(project_id: String, bridgehead: String) -> Result<OpalProjectStatusResponse> {
-    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2).expect("Valid app id");
-    let bk: Vec<AppId> = vec![AppId::new_unchecked(format!("{}.{bridgehead}.{broker}", CONFIG.opal_beam_name))];
+    let task = create_and_send_task_request(
+        OpalRequestType::STATUS,
+        None,
+        Some(project_id.clone().to_string()),
+        None,
+        Some(bridgehead)
+    ).await?;
 
-
-    let request = OpalRequest {
-        request_type: OpalRequestType::STATUS.to_string(),
-        name:  None,
-        project: Some(project_id.clone().to_string()),
-    };
-
-    let task = TaskRequest {
-        id: MsgId::new(),
-        from: CONFIG.beam_id.clone(),
-        to: bk,
-        body: request,
-        ttl: "60s".into(),
-        failure_strategy: beam_lib::FailureStrategy::Discard,
-        metadata: serde_json::Value::Null,
-    };
-    BEAM_CLIENT.post_task(&task).await?;
     info!("Check Project Status  {task:#?}");
        
     match status_project_from_beam(task).await {
@@ -319,7 +243,7 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
         Some(e) => Err(anyhow::Error::msg(e)),
         None => Err(anyhow::Error::msg("No messages received or processed")), 
     }
-} //db.update_token_db(new_token);
+}
 
 async fn status_project_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectStatusResponse> {
     let res = BEAM_CLIENT
@@ -482,5 +406,72 @@ async fn remove_tokens_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalP
     match last_error {
         Some(e) => Err(anyhow::Error::msg(e)),
         None => Err(anyhow::Error::msg("No messages received or processed")), 
+    }
+}
+
+async fn create_and_send_task_request(
+    request_type: OpalRequestType, 
+    name: Option<String>, 
+    project: Option<String>, 
+    bridgeheads: Option<&[String]>, 
+    bridgehead_single: Option<String>
+) -> Result<TaskRequest<OpalRequest>, anyhow::Error> {
+    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2)
+        .ok_or_else(|| anyhow::Error::msg("Invalid app id"))?;
+
+    let bks: Vec<_> = if let Some(bridgehead) = bridgehead_single {
+        vec![AppId::new_unchecked(format!("{}.{bridgehead}.{broker}", CONFIG.opal_beam_name))]
+    } else {
+        bridgeheads.unwrap_or(&[]).iter()
+            .map(|bk| AppId::new_unchecked(format!("{}.{bk}.{broker}", CONFIG.opal_beam_name)))
+            .collect()
+    };
+
+    let request = OpalRequest {
+        request_type: request_type.to_string(),
+        name,
+        project,
+    };
+
+    let task = TaskRequest {
+        id: MsgId::new(),
+        from: CONFIG.beam_id.clone(),
+        to: bks,
+        body: request,
+        ttl: "60s".into(),
+        failure_strategy: beam_lib::FailureStrategy::Discard,
+        metadata: serde_json::Value::Null,
+    };
+
+    BEAM_CLIENT.post_task(&task).await?;
+    Ok(task)
+}
+
+async fn process_beam_response<T: serde::de::DeserializeOwned + 'static>(
+    task: &TaskRequest<OpalRequest>
+) -> Result<T, anyhow::Error> {
+    let res = BEAM_CLIENT
+        .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
+        .header(header::ACCEPT, HeaderValue::from_static("text/event-stream"))
+        .send()
+        .await?;
+
+    let mut stream = async_sse::decode(res.bytes_stream().map_err(|e| io::Error::new(io::ErrorKind::Other, e)).into_async_read());
+    let mut last_error: Option<String> = None;
+
+    while let Some(Ok(Event::Message(msg))) = stream.next().await {
+        match serde_json::from_slice::<TaskResult<T>>(msg.data()) {
+            Ok(result) => return Ok(result.body),
+            Err(e) => {
+                let error_msg = format!("Failed to deserialize message into a result: {e}");
+                warn!("{error_msg}");
+                last_error = Some(error_msg);
+            },
+        }
+    }
+
+    match last_error {
+        Some(e) => Err(anyhow::Error::msg(e)),
+        None => Err(anyhow::Error::msg("No messages received or processed")),
     }
 }
