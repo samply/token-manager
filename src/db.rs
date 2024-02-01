@@ -136,8 +136,8 @@ impl Db {
             "bk": bridgehead,
             "user_id": "",
             "token_created_at": "",
-            "project_status": OpalTokenStatus::NOTFOUND, 
-            "token_status": OpalProjectStatus::NOTFOUND, 
+            "project_status": OpalTokenStatus::NOT_FOUND,
+            "token_status": OpalProjectStatus::NOT_FOUND,
         });
 
         match project_status_result {
