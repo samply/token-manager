@@ -1,5 +1,5 @@
 use crate::config::CONFIG;
-use crate::enums::OpalProjectStatusResponse;
+use crate::enums::{OpalProjectStatusResponse, OpalTokenStatus, OpalProjectStatus};
 use crate::handlers::{fetch_project_tables_request, check_project_status_request};
 use crate::models::{NewToken, TokenManager, TokenParams};
 use axum::{async_trait, extract::{FromRef, FromRequestParts}, http::{request::Parts, StatusCode}, Json};
@@ -70,7 +70,7 @@ impl Db {
             .set((
                 token.eq(token_update.token),
                 token_status.eq("UPDATED"),
-                created_at.eq(&token_update.created_at),
+                token_created_at.eq(&token_update.token_created_at),
             ))
             .execute(&mut self.0)
         {
@@ -130,11 +130,21 @@ impl Db {
 
         let project_status_result = check_project_status_request(project.clone(), bridgehead.clone()).await;
 
-        let status_result = match project_status_result {
-            Ok(OpalProjectStatusResponse::Ok { status }) => status, 
+        // Initialize default response structure
+        let mut response_json = json!({
+            "project_id": project,
+            "bk": bridgehead,
+            "user_id": "",
+            "token_created_at": "",
+            "project_status": OpalTokenStatus::NOTFOUND, 
+            "token_status": OpalProjectStatus::NOTFOUND, 
+        });
+
+        match project_status_result {
+            Ok(OpalProjectStatusResponse::Ok { status }) => response_json["project_status"] = json!(status), 
             Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
                 let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-                return Err((status,  error));
+                eprintln!("Project status error: {}, {}", status, error);
             },
             Err(e) => {
                 eprintln!("Error retrieving project status: {:?}", e);
@@ -152,34 +162,21 @@ impl Db {
                 if !records.is_empty() {
                     info!("Project found with project_id: {:?}", &records);
                     let record = &records[0];
-                    
-                    let response = json!({
-                            "project_id": record.project_id,
-                            "bk": record.bk,
-                            "user_id": record.user_id,
-                            "created_at": record.created_at,
-                            "project_status": status_result,
-                            "token_status": record.token_status,
-                        });
-
-                    Ok(Json(response))
+                    // Update response with record details
+                    response_json["user_id"] = json!(record.user_id);
+                    response_json["token_created_at"] = json!(record.token_created_at);
+                    response_json["token_status"] = json!(record.token_status);
                 } else {
+                    // Notify in response JSON that no project was found instead of returning an error
                     info!("Project not found with project_id: {}", project);
-                    let error_response = r#"{
-                    "status": "error",
-                    "message": "Project not found with project_id"
-                }"#;
-                    Err((StatusCode::NOT_FOUND, error_response.into()))
                 }
             }
             Err(err) => {
                 error!("Error calling DB: {}", err);
-                Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "Cannot connect to database".into(),
-                ))
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()));
             }
         }
+        Ok(Json(response_json))
     }
 
     pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {

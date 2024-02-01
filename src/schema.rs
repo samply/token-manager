@@ -9,6 +9,6 @@ diesel::table! {
         project_status -> Text,
         bk -> Text,
         user_id -> Text,
-        created_at -> Text,
+        token_created_at -> Text,
     }
 }
