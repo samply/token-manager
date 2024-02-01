@@ -8,5 +8,5 @@ CREATE TABLE tokens (
     token_status TEXT NOT NULL,
     project_status TEXT NOT NULL,  
     user_id TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    token_created_at TEXT NOT NULL
     )

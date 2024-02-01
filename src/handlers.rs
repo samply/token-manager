@@ -176,7 +176,7 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
                     token_status: OpalTokenStatus::CREATED.as_str(),
                     project_status: OpalProjectStatus::CREATED.as_str(),
                     user_id: &token_params.user_id,
-                    created_at: &formatted_date,
+                    token_created_at: &formatted_date,
                 };
                 db.save_token_db(new_token);
                 return Ok(OpalResponse::Ok { token });
@@ -189,7 +189,6 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
         None => Err(anyhow::Error::msg("No messages received or processed")), 
     }
 }
-
 
 async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams) -> Result<OpalResponse>  {
     let today = Local::now();
@@ -231,7 +230,7 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
                     token_status: OpalTokenStatus::CREATED.as_str(),
                     project_status: OpalProjectStatus::CREATED.as_str(),
                     user_id: &token_params.user_id,
-                    created_at: &formatted_date,
+                    token_created_at: &formatted_date,
                 };
                 db.update_token_db(new_token);
                 return Ok(OpalResponse::Ok { token });

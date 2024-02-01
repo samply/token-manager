@@ -33,7 +33,7 @@ pub struct TokenManager {
     pub bk: String,
     pub token_status: String,
     pub user_id: String,
-    pub created_at: String,
+    pub token_created_at: String,
 }
 
 #[derive(Insertable)]
@@ -45,5 +45,5 @@ pub struct NewToken<'a> {
     pub bk: &'a str,
     pub token_status: &'a str,
     pub user_id: &'a str,
-    pub created_at: &'a str,
+    pub token_created_at: &'a str,
 }
