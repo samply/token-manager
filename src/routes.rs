@@ -1,5 +1,5 @@
 use crate::db::Db;
-use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request, remove_tokens_request};
+use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request, remove_tokens_request, check_project_status_request};
 use crate::enums::{OpalResponse, OpalProjectStatusResponse};
 use crate::models::TokenParams;
 use axum::{
@@ -33,16 +33,17 @@ async fn create_token(
 }
 
 
-async fn check_status(mut db: Db, Path((project_id, bk)): Path<(String, String)>) -> impl IntoResponse {
-    if project_id.is_empty() {
-        let error_response = json!({
-            "status": "error",
-            "message": "Project ID is required"
-        });
-        return (StatusCode::BAD_REQUEST, Json(error_response)).into_response();
+async fn check_project_status(Path((project_id, bk)): Path<(String, String)>) -> impl IntoResponse {
+    
+    match check_project_status_request(project_id, bk).await {
+        Ok(json) => (StatusCode::OK, json).into_response(),
+        Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
     }
+}
 
-    match db.check_project_status(project_id, bk).await {
+async fn check_token_status(mut db: Db, Path((user_id, bk)): Path<(String, String)>) -> impl IntoResponse {
+
+    match db.check_token_status(user_id, bk).await {
         Ok(json) => (StatusCode::OK, json).into_response(),
         Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
     }
@@ -111,8 +112,9 @@ async fn remove_tokens(db: Db, Path((project_id, bk)): Path<(String, String)>) -
 pub fn configure_routes(pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::prelude::SqliteConnection>>) -> Router {
     Router::new()
         .route("/tokens", post(create_token))
-        .route("/tokens/:user_id/:bk", delete(remove_tokens)) 
-        .route("/projects/:project_id/status/:bk", get(check_status))
+        .route("/tokens/:user_id/:bk", delete(remove_tokens))
+        .route("/tokens/:user_id/status/:bk", get(check_token_status)) 
+        .route("/projects/:project_id/status/:bk", get(check_project_status))
         .route("/scripts", post(generate_script))
         .route("/refreshToken", put(refresh_token))
         .route("/projects/:project_id/:bk", delete(remove_project_and_token)) 

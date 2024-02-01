@@ -1,5 +1,5 @@
 use crate::config::CONFIG;
-use crate::enums::{OpalProjectStatusResponse, OpalTokenStatus, OpalProjectStatus};
+use crate::enums::{OpalTokenStatus, OpalProjectStatus};
 use crate::handlers::{fetch_project_tables_request, check_project_status_request};
 use crate::models::{NewToken, TokenManager, TokenParams};
 use axum::{async_trait, extract::{FromRef, FromRequestParts}, http::{request::Parts, StatusCode}, Json};
@@ -121,39 +121,24 @@ impl Db {
         }
     }
 
-    pub async fn check_project_status(
+    pub async fn check_token_status(
         &mut self,
-        project: String,
+        user: String,
         bridgehead: String
     ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
         use crate::schema::tokens::dsl::*;
-
-        let project_status_result = check_project_status_request(project.clone(), bridgehead.clone()).await;
-
-        // Initialize default response structure
-        let mut response_json = json!({
-            "project_id": project,
+        
+        let mut token_status_json = json!({
+            "project_id": "",
             "bk": bridgehead,
-            "user_id": "",
+            "user_id": user,
             "token_created_at": "",
             "project_status": OpalTokenStatus::NOT_FOUND,
             "token_status": OpalProjectStatus::NOT_FOUND,
         });
 
-        match project_status_result {
-            Ok(OpalProjectStatusResponse::Ok { status }) => response_json["project_status"] = json!(status), 
-            Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
-                let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-                eprintln!("Project status error: {}, {}", status, error);
-            },
-            Err(e) => {
-                eprintln!("Error retrieving project status: {:?}", e);
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
-            }
-        };
-        
         match tokens
-            .filter(project_id.eq(&project))
+            .filter(user_id.eq(&user))
             .filter(bk.eq(&bridgehead))
             .select(TokenManager::as_select())
             .load::<TokenManager>(&mut self.0)
@@ -162,13 +147,29 @@ impl Db {
                 if !records.is_empty() {
                     info!("Project found with project_id: {:?}", &records);
                     let record = &records[0];
-                    // Update response with record details
-                    response_json["user_id"] = json!(record.user_id);
-                    response_json["token_created_at"] = json!(record.token_created_at);
-                    response_json["token_status"] = json!(record.token_status);
+
+                    let project_status_response = check_project_status_request(record.project_id.clone(), bridgehead.clone()).await;
+
+                    match project_status_response {
+                        Ok(json_response) => {
+                            // Assuming json_response is the expected Json<serde_json::Value> containing project status
+                            let status = json_response.0; // Get the inner serde_json::Value
+                            token_status_json["project_status"] = status["project_status"].clone();
+                        },
+                        Err((status, msg)) => {
+                            // Log the error and continue, or decide how you want to handle this error
+                            error!("Error retrieving project status: {} {}", status, msg);
+                            // Optionally set the project status to an error value or return Err
+                        }
+                    }
+                    //let project_status_result = check_project_status_request(record.project_id, record.bk).await;
+
+                    token_status_json["project_id"] = json!(record.project_id);
+                    token_status_json["token_created_at"] = json!(record.token_created_at);
+                    token_status_json["token_status"] = json!(record.token_status);
                 } else {
                     // Notify in response JSON that no project was found instead of returning an error
-                    info!("Project not found with project_id: {}", project);
+                    info!("Token not found with user_id: {}", user);
                 }
             }
             Err(err) => {
@@ -176,7 +177,7 @@ impl Db {
                 return Err((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()));
             }
         }
-        Ok(Json(response_json))
+        Ok(Json(token_status_json))
     }
 
     pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {

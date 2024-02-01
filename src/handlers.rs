@@ -7,7 +7,8 @@ use crate::enums::{OpalResponse, OpalProjectTablesResponse, OpalProjectStatus, O
 use crate::models::{NewToken, OpalRequest, TokenParams};
 use anyhow::Result;
 use async_sse::Event;
-use axum::http::HeaderValue;
+use axum::http::StatusCode;
+use axum::{http::HeaderValue, Json};
 use beam_lib::{AppId, TaskRequest, MsgId, TaskResult};
 use futures_util::StreamExt;
 use futures_util::stream::TryStreamExt;
@@ -15,6 +16,8 @@ use chrono::Local;
 use reqwest::{header, Method};
 use tracing::warn;
 use tracing::info;
+use serde_json::json;
+
 
 pub async fn send_token_registration_request(db: Db, token_params: TokenParams) -> Result<OpalResponse> {
     let task = create_and_send_task_request(
@@ -114,18 +117,22 @@ pub async fn fetch_project_tables_request(token_params: TokenParams) -> Result<V
     result
 }
 
-pub async fn check_project_status_request(project_id: String, bridgehead: String) -> Result<OpalProjectStatusResponse> {
-    let task = create_and_send_task_request(
-        OpalRequestType::STATUS,
-        None,
-        Some(project_id.clone().to_string()),
-        None,
-        Some(bridgehead)
-    ).await?;
+pub async fn check_project_status_request(project_id: String, bridgehead: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    // Initialize response structure for project status
+    let mut response_json = json!({
+        "project_id": project_id.clone(),
+        "bk": bridgehead.clone(),
+        "project_status": OpalTokenStatus::NOT_FOUND,
+    });
+
+    let task =  match create_and_send_task_request(OpalRequestType::STATUS, None, Some(project_id.clone().to_string()), None, Some(bridgehead)).await {
+        Ok(result) => result,
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Error creating task: {}", e))),
+    };
 
     info!("Check Project Status  {task:#?}");
        
-    match status_project_from_beam(task).await {
+    let project_status_result = match status_project_from_beam(task).await {
         Ok(response) =>{ 
             info!("Project Status response {response:#?}");
             Ok(response)
@@ -133,7 +140,24 @@ pub async fn check_project_status_request(project_id: String, bridgehead: String
         Err(e) => {
             Err(e)
         }
-    }
+    };
+
+    match project_status_result {
+        Ok(OpalProjectStatusResponse::Ok { status }) => {
+            response_json["project_status"] = json!(status);
+        },
+        Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
+            let status = StatusCode::from_u16(status_code as u16)
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            eprintln!("Project status error: {}, {}", status, error);
+        },
+        Err(e) => {
+            eprintln!("Error retrieving project status: {:?}", e);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+        },
+    };
+    
+    Ok(Json(response_json))
 }
 
 async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams) -> Result<OpalResponse> {
@@ -444,33 +468,4 @@ async fn create_and_send_task_request(
 
     BEAM_CLIENT.post_task(&task).await?;
     Ok(task)
-}
-
-async fn process_beam_response<T: serde::de::DeserializeOwned + 'static>(
-    task: &TaskRequest<OpalRequest>
-) -> Result<T, anyhow::Error> {
-    let res = BEAM_CLIENT
-        .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
-        .header(header::ACCEPT, HeaderValue::from_static("text/event-stream"))
-        .send()
-        .await?;
-
-    let mut stream = async_sse::decode(res.bytes_stream().map_err(|e| io::Error::new(io::ErrorKind::Other, e)).into_async_read());
-    let mut last_error: Option<String> = None;
-
-    while let Some(Ok(Event::Message(msg))) = stream.next().await {
-        match serde_json::from_slice::<TaskResult<T>>(msg.data()) {
-            Ok(result) => return Ok(result.body),
-            Err(e) => {
-                let error_msg = format!("Failed to deserialize message into a result: {e}");
-                warn!("{error_msg}");
-                last_error = Some(error_msg);
-            },
-        }
-    }
-
-    match last_error {
-        Some(e) => Err(anyhow::Error::msg(e)),
-        None => Err(anyhow::Error::msg("No messages received or processed")),
-    }
 }
