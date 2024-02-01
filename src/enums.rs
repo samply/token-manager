@@ -53,10 +53,10 @@ pub enum OpalRequestType {
 pub enum OpalProjectStatus {
     #[serde(rename = "CREATED")]
     CREATED,
-    #[serde(rename = "WITHDATA")]
-    WITHDATA,
-    #[serde(rename = "NOTFOUND")]
-    NOTFOUND,
+    #[serde(rename = "WITH_DATA")]
+    WITH_DATA,
+    #[serde(rename = "NOT_FOUND")]
+    NOT_FOUND,
 }
 
 
@@ -66,16 +66,16 @@ pub enum OpalTokenStatus {
     CREATED,
     #[serde(rename = "EXPIRED")]
     EXPIRED,
-    #[serde(rename = "NOTFOUND")]
-    NOTFOUND
+    #[serde(rename = "NOT_FOUND")]
+    NOT_FOUND
 }
 
 impl OpalProjectStatus {
     pub fn as_str(&self) -> &'static str {
         match self {
             OpalProjectStatus::CREATED => "CREATED",
-            OpalProjectStatus::WITHDATA => "WITHDATA",
-            OpalProjectStatus::NOTFOUND => "NOTFOUND",
+            OpalProjectStatus::WITH_DATA => "WITH_DATA",
+            OpalProjectStatus::NOT_FOUND => "NOT_FOUND",
         }
     }
 }
@@ -85,7 +85,7 @@ impl OpalTokenStatus {
         match self {
             OpalTokenStatus::CREATED => "CREATED",
             OpalTokenStatus::EXPIRED => "EXPIRED",
-            OpalTokenStatus::NOTFOUND => "NOTFOUND",
+            OpalTokenStatus::NOT_FOUND => "NOT_FOUND",
         }
     }
 }
