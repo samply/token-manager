@@ -139,7 +139,16 @@ impl Db {
             "project_status": OpalTokenStatus::NOTFOUND,
             "token_status": OpalProjectStatus::NOTFOUND,
         });
-
+        let project_status_response = check_project_status_request(project.clone(), bridgehead.clone()).await;
+        match project_status_response {
+            Ok(json_response) => {
+                let status = json_response.0;
+                token_status_json["project_status"] = status["project_status"].clone();
+            }
+            Err((status, msg)) => {
+                error!("Error retrieving project status: {} {}", status, msg);
+            }
+        }
         match tokens
             .filter(user_id.eq(&user))
             .filter(bk.eq(&bridgehead))
@@ -149,22 +158,16 @@ impl Db {
         {
             Ok(records) => {
                 if !records.is_empty() {
+                    // TODO: Check Token Status in Opal: Send token name (token sent only once for being created, but not for checking status)
+                    // TODO: Add token_name to database (generate UUID as token-name)
+                    // TODO: Access to database: serialize -> Encrypt token + deserialize -> decrypt token
+                    // TODO: After getting token status from Opal: Update status in database
+                    // TODO: User case: If token not found in Opal: Call "generate token"
+                    // Update token status from Opal in the database
                     info!("Project found with project_id: {:?}", &records);
                     let record = &records[0];
-
-                    let project_status_response = check_project_status_request(record.project_id.clone(), bridgehead.clone()).await;
-
-                    match project_status_response {
-                        Ok(json_response) => {
-                            let status = json_response.0;
-                            token_status_json["project_status"] = status["project_status"].clone();
-                        }
-                        Err((status, msg)) => {
-                            error!("Error retrieving project status: {} {}", status, msg);
-                        }
-                    }
                     token_status_json["token_created_at"] = json!(record.token_created_at);
-                    token_status_json["token_status"] = json!(record.token_status);
+                    token_status_json["token_status"] = json!(record.token_status); // TODO: Token status of the database
                 } else {
                     // Notify in response JSON that no project was found instead of returning an error
                     info!("Token not found with user_id: {}", user);
@@ -199,6 +202,9 @@ impl Db {
             match records {
                 Ok(records) => {
                     if !records.is_empty() {
+                        // TODO: Check token status for "every token": If token not found (and project with data): generate token again and update database
+                        // If it is not possible to generate a token because project not found, remove token of the database and ignore entry for the final script
+                        // If no token is found anywhere, don't send any token at all.
                         // Nested loop: For each table, loop through each record
                         for record in &records {
                             for table in &tables {
