@@ -134,8 +134,8 @@ impl Db {
             "bk": bridgehead.clone(),
             "user_id": user.clone(),
             "token_created_at": "",
-            "project_status": OpalTokenStatus::NOT_FOUND,
-            "token_status": OpalProjectStatus::NOT_FOUND,
+            "project_status": OpalTokenStatus::NOTFOUND,
+            "token_status": OpalProjectStatus::NOTFOUND,
         });
 
         match tokens

@@ -122,7 +122,7 @@ pub async fn check_project_status_request(project_id: String, bridgehead: String
     let mut response_json = json!({
         "project_id": project_id.clone(),
         "bk": bridgehead.clone(),
-        "project_status": OpalTokenStatus::NOT_FOUND,
+        "project_status": OpalTokenStatus::NOTFOUND,
     });
 
     let task =  match create_and_send_task_request(OpalRequestType::STATUS, None, Some(project_id.clone().to_string()), None, Some(bridgehead)).await {
