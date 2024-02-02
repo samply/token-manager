@@ -1,13 +1,15 @@
-use crate::config::CONFIG;
-use crate::enums::{OpalTokenStatus, OpalProjectStatus};
-use crate::handlers::{fetch_project_tables_request, check_project_status_request};
-use crate::models::{NewToken, TokenManager, TokenParams};
 use axum::{async_trait, extract::{FromRef, FromRequestParts}, http::{request::Parts, StatusCode}, Json};
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use serde_json::json;
-use tracing::{error, warn, info};
+use tracing::{error, info, warn};
+
+use crate::config::CONFIG;
+use crate::handlers::{check_project_status_request, fetch_project_tables_request};
+use crate::models::{NewToken, TokenManager, TokenParams};
+
+use crate::enums::{OpalTokenStatus, OpalProjectStatus};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -26,9 +28,9 @@ pub struct Db(PooledConnection<ConnectionManager<SqliteConnection>>);
 
 #[async_trait]
 impl<S> FromRequestParts<S> for Db
-where
-    Pool<ConnectionManager<SqliteConnection>>: FromRef<S>,
-    S: Send + Sync,
+    where
+        Pool<ConnectionManager<SqliteConnection>>: FromRef<S>,
+        S: Send + Sync,
 {
     type Rejection = StatusCode;
 
@@ -65,7 +67,7 @@ impl Db {
                 .and(project_id.eq(&token_update.project_id))
                 .and(bk.eq(&token_update.bk))
         );
-    
+
         match diesel::update(target)
             .set((
                 token.eq(token_update.token),
@@ -83,15 +85,15 @@ impl Db {
         }
     }
 
-    pub fn delete_token_db(&mut self, 
-        project: String
+    pub fn delete_token_db(&mut self,
+                           project: String,
     ) {
         use crate::schema::tokens::dsl::*;
-    
+
         let target = tokens.filter(
             project_id.eq(&project)
         );
-    
+
         match diesel::delete(target).execute(&mut self.0) {
             Ok(_) => {
                 info!("Project and Tokens deleted from DB");
@@ -102,15 +104,15 @@ impl Db {
         }
     }
 
-    pub fn delete_user_db(&mut self, 
-        user: String
+    pub fn delete_user_db(&mut self,
+                          user: String,
     ) {
         use crate::schema::tokens::dsl::*;
-    
+
         let target = tokens.filter(
             user_id.eq(&user)
         );
-    
+
         match diesel::delete(target).execute(&mut self.0) {
             Ok(_) => {
                 info!("Tokens deleted from DB");
@@ -125,12 +127,12 @@ impl Db {
         &mut self,
         user: String,
         bridgehead: String,
-        project: String
+        project: String,
     ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
         use crate::schema::tokens::dsl::*;
-        
+
         let mut token_status_json = json!({
-            "project_id": "",
+            "project_id": project.clone(),
             "bk": bridgehead.clone(),
             "user_id": user.clone(),
             "token_created_at": "",
@@ -154,14 +156,13 @@ impl Db {
 
                     match project_status_response {
                         Ok(json_response) => {
-                            let status = json_response.0; 
+                            let status = json_response.0;
                             token_status_json["project_status"] = status["project_status"].clone();
-                        },
+                        }
                         Err((status, msg)) => {
                             error!("Error retrieving project status: {} {}", status, msg);
                         }
                     }
-                    token_status_json["project_id"] = json!(record.project_id);
                     token_status_json["token_created_at"] = json!(record.token_created_at);
                     token_status_json["token_status"] = json!(record.token_status);
                 } else {
@@ -179,22 +180,22 @@ impl Db {
 
     pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {
         use crate::schema::tokens::dsl::*;
-    
-        let tables_result = fetch_project_tables_request(query.clone()).await; 
-    
+
+        let tables_result = fetch_project_tables_request(query.clone()).await;
+
         // Initialize script lines vector
         let mut script_lines = Vec::new();
-    
+
         // First check if tables_result is Ok and records are available
         if let Ok(tables) = tables_result {
             info!("Result from status_project_from_beam: {:?}", tables);
-    
+
             let records = tokens
                 .filter(project_id.eq(&query.project_id))
                 .filter(user_id.eq(&query.user_id))
                 .select(TokenManager::as_select())
                 .load::<TokenManager>(&mut self.0);
-    
+
             match records {
                 Ok(records) => {
                     if !records.is_empty() {
@@ -226,11 +227,11 @@ impl Db {
             Err("Error obtaining table names.".into())
         }
     }
-}    
+}
 
 fn generate_r_script(script_lines: Vec<String>) -> String {
     let mut builder_script = String::from(
-r#"library(DSI)
+        r#"library(DSI)
 library(DSOpal)
 library(dsBaseClient)
 set_config(use_proxy(url="http://beam-connect", port=8062))
