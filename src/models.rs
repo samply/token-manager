@@ -47,3 +47,17 @@ pub struct NewToken<'a> {
     pub user_id: &'a str,
     pub token_created_at: &'a str,
 }
+
+
+#[derive(Deserialize)]
+pub struct TokenStatusQuery {
+    pub user_id: String,
+    pub bk: String,
+    pub project_id: String,
+}
+
+#[derive(Deserialize)]
+pub struct ProjectStatusQuery {
+    pub bk: String,
+    pub project_id: String,
+}

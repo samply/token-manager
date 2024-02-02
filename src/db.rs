@@ -124,14 +124,15 @@ impl Db {
     pub async fn check_token_status(
         &mut self,
         user: String,
-        bridgehead: String
+        bridgehead: String,
+        project: String
     ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
         use crate::schema::tokens::dsl::*;
         
         let mut token_status_json = json!({
             "project_id": "",
-            "bk": bridgehead,
-            "user_id": user,
+            "bk": bridgehead.clone(),
+            "user_id": user.clone(),
             "token_created_at": "",
             "project_status": OpalTokenStatus::NOT_FOUND,
             "token_status": OpalProjectStatus::NOT_FOUND,
@@ -140,6 +141,7 @@ impl Db {
         match tokens
             .filter(user_id.eq(&user))
             .filter(bk.eq(&bridgehead))
+            .filter(project_id.eq(&project))
             .select(TokenManager::as_select())
             .load::<TokenManager>(&mut self.0)
         {
@@ -152,18 +154,13 @@ impl Db {
 
                     match project_status_response {
                         Ok(json_response) => {
-                            // Assuming json_response is the expected Json<serde_json::Value> containing project status
-                            let status = json_response.0; // Get the inner serde_json::Value
+                            let status = json_response.0; 
                             token_status_json["project_status"] = status["project_status"].clone();
                         },
                         Err((status, msg)) => {
-                            // Log the error and continue, or decide how you want to handle this error
                             error!("Error retrieving project status: {} {}", status, msg);
-                            // Optionally set the project status to an error value or return Err
                         }
                     }
-                    //let project_status_result = check_project_status_request(record.project_id, record.bk).await;
-
                     token_status_json["project_id"] = json!(record.project_id);
                     token_status_json["token_created_at"] = json!(record.token_created_at);
                     token_status_json["token_status"] = json!(record.token_status);
