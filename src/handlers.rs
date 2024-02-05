@@ -17,12 +17,13 @@ use reqwest::{header, Method};
 use tracing::warn;
 use tracing::info;
 use serde_json::json;
-
+use uuid::Uuid;
 
 pub async fn send_token_registration_request(db: Db, token_params: TokenParams) -> Result<OpalResponse> {
+    let token_name = Uuid::new_v4().to_string();
     let task = create_and_send_task_request(
         OpalRequestType::CREATE,
-        Some(token_params.user_id.to_string()),
+        Some(token_name.clone()),
         Some(token_params.project_id.to_string()),
         Some(&token_params.bridgehead_ids),
         None
@@ -30,7 +31,7 @@ pub async fn send_token_registration_request(db: Db, token_params: TokenParams) 
     
     info!("Created token task {task:#?}");
  
-    match save_tokens_from_beam(db, task, token_params).await {
+    match save_tokens_from_beam(db, task, token_params, token_name).await {
         Ok(response) => Ok(response),
         Err(e) => {
             Err(e)
@@ -82,10 +83,22 @@ pub async fn remove_tokens_request(mut db: Db, user_id: String, bridgehead: Stri
     }
 }
 
-pub async fn refresh_token_request(db: Db, token_params: TokenParams) -> Result<OpalResponse> {
+pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Result<OpalResponse> {
+    let token_name_result = db.get_token_name(token_params.user_id.clone(), token_params.project_id.clone());
+    
+    let token_name = match token_name_result {
+        Ok(Some(name)) => name,
+        Ok(None) => {
+            return Err(anyhow::Error::msg("Token not found")) 
+        },
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+    
     let task = create_and_send_task_request(
         OpalRequestType::UPDATE,
-        Some(token_params.user_id.clone().to_string()),
+        Some(token_name.clone()),
         Some(token_params.project_id.clone().to_string()),
         Some(&token_params.bridgehead_ids),
         None
@@ -93,7 +106,7 @@ pub async fn refresh_token_request(db: Db, token_params: TokenParams) -> Result<
 
     info!("Refresh token task  {task:#?}");
 
-    match update_tokens_from_beam(db, task, token_params).await {
+    match update_tokens_from_beam(db, task, token_params, token_name.clone()).await {
         Ok(response) => Ok(response),
         Err(e) => {
             Err(e)
@@ -160,7 +173,50 @@ pub async fn check_project_status_request(project_id: String, bridgehead: String
     Ok(Json(response_json))
 }
 
-async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams) -> Result<OpalResponse> {
+pub async fn check_token_status_request(user_id: String, bridgehead: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    // Initialize response structure for project status
+    let mut response_json = json!({
+        "user_id": user_id.clone(),
+        "bk": bridgehead.clone(),
+        "token_status": OpalTokenStatus::NOTFOUND,
+    });
+
+    let task =  match create_and_send_task_request(OpalRequestType::STATUS, Some(user_id.clone().to_string()), None, None, Some(bridgehead)).await {
+        Ok(result) => result,
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Error creating task: {}", e))),
+    };
+
+    info!("Check Token Status  {task:#?}");
+       
+    let token_status_result = match status_project_from_beam(task).await {
+        Ok(response) =>{ 
+            info!("Token Status response {response:#?}");
+            Ok(response)
+        },
+        Err(e) => {
+            Err(e)
+        }
+    };
+
+    match token_status_result {
+        Ok(OpalProjectStatusResponse::Ok { status }) => {
+            response_json["token_status"] = json!(status);
+        },
+        Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
+            let status = StatusCode::from_u16(status_code as u16)
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            eprintln!("Token status error: {}, {}", status, error);
+        },
+        Err(e) => {
+            eprintln!("Error retrieving token status: {:?}", e);
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+        },
+    };
+    
+    Ok(Json(response_json))
+}
+
+async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams, token_name: String) -> Result<OpalResponse> {
     let today = Local::now();
     let formatted_date = today.format("%d-%m-%Y").to_string();
 
@@ -194,6 +250,7 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
             OpalResponse::Ok { token } => {
                 let site_name = result.from.as_ref().split('.').nth(1).expect("Valid app id");
                 let new_token = NewToken {
+                    token_name: &token_name,
                     token: &token,
                     project_id: &token_params.project_id,
                     bk: &site_name,
@@ -214,7 +271,7 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
     }
 }
 
-async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams) -> Result<OpalResponse>  {
+async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams, token_name: String) -> Result<OpalResponse>  {
     let today = Local::now();
     let formatted_date = today.format("%d-%m-%Y").to_string();
 
@@ -248,6 +305,7 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
             OpalResponse::Ok { token } => {
                 let site_name = result.from.as_ref().split('.').nth(1).expect("Valid app id");
                 let new_token = NewToken {
+                    token_name: &token_name,
                     token: &token,
                     project_id: &token_params.project_id,
                     bk: &site_name,

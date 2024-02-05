@@ -2,6 +2,7 @@
 
 CREATE TABLE tokens (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token_name TEXT NOT NULL,
     token TEXT NOT NULL, 
     project_id TEXT NOT NULL, 
     bk TEXT NOT NULL, 

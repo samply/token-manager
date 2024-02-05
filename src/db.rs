@@ -2,6 +2,7 @@ use axum::{async_trait, extract::{FromRef, FromRequestParts}, http::{request::Pa
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use diesel::result::Error;
 use serde_json::json;
 use tracing::{error, info, warn};
 
@@ -123,6 +124,17 @@ impl Db {
         }
     }
 
+    pub fn get_token_name(&mut self, user: String, project: String) -> Result<Option<String>, Error> {
+        use crate::schema::tokens::dsl::*;
+
+        tokens
+            .filter(user_id.eq(user))
+            .filter(project_id.eq(project))
+            .select(token_name)
+            .first::<String>(&mut self.0)
+            .optional() 
+    }
+
     pub async fn check_token_status(
         &mut self,
         user: String,
@@ -139,6 +151,7 @@ impl Db {
             "project_status": OpalTokenStatus::NOTFOUND,
             "token_status": OpalProjectStatus::NOTFOUND,
         });
+
         let project_status_response = check_project_status_request(project.clone(), bridgehead.clone()).await;
         match project_status_response {
             Ok(json_response) => {
@@ -149,6 +162,7 @@ impl Db {
                 error!("Error retrieving project status: {} {}", status, msg);
             }
         }
+    
         match tokens
             .filter(user_id.eq(&user))
             .filter(bk.eq(&bridgehead))
