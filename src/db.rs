@@ -4,10 +4,11 @@ use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use diesel::result::Error;
 use serde_json::json;
+use anyhow::Result;
 use tracing::{error, info, warn};
 
 use crate::config::CONFIG;
-use crate::handlers::{check_project_status_request, fetch_project_tables_request};
+use crate::handlers::{check_project_status_request, fetch_project_tables_request, check_token_status_request};
 use crate::models::{NewToken, TokenManager, TokenParams};
 
 use crate::enums::{OpalTokenStatus, OpalProjectStatus};
@@ -162,7 +163,20 @@ impl Db {
                 error!("Error retrieving project status: {} {}", status, msg);
             }
         }
-    
+
+        let token_name_result = self.get_token_name(user.clone(), project.clone());
+
+        let token_name_response = match token_name_result {
+            Ok(Some(name)) => {
+                name},
+            Ok(None) => {
+                return Err((StatusCode::NOT_FOUND, "Token not found".to_string()));
+            },
+            Err(e) => {
+                return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+            }
+        };
+
         match tokens
             .filter(user_id.eq(&user))
             .filter(bk.eq(&bridgehead))
@@ -181,7 +195,18 @@ impl Db {
                     info!("Project found with project_id: {:?}", &records);
                     let record = &records[0];
                     token_status_json["token_created_at"] = json!(record.token_created_at);
-                    token_status_json["token_status"] = json!(record.token_status); // TODO: Token status of the database
+
+                    let token_status_response = check_token_status_request(user.clone(), bridgehead.clone(), token_name_response.clone()).await;
+                    match token_status_response {
+                        Ok(json_response) => {
+                            let status = json_response.0;
+                            token_status_json["token_status"] = status["token_status"].clone();
+                        }
+                        Err((status, msg)) => {
+                            error!("Error retrieving token status: {} {}", status, msg);
+                        }
+                    }
+                    
                 } else {
                     // Notify in response JSON that no project was found instead of returning an error
                     info!("Token not found with user_id: {}", user);
