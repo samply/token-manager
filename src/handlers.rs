@@ -95,7 +95,7 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
             return Err(e.into());
         }
     };
-    
+
     let task = create_and_send_task_request(
         OpalRequestType::UPDATE,
         Some(token_name.clone()),
@@ -131,7 +131,6 @@ pub async fn fetch_project_tables_request(token_params: TokenParams) -> Result<V
 }
 
 pub async fn check_project_status_request(project_id: String, bridgehead: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    // Initialize response structure for project status
     let mut response_json = json!({
         "project_id": project_id.clone(),
         "bk": bridgehead.clone(),
@@ -173,15 +172,14 @@ pub async fn check_project_status_request(project_id: String, bridgehead: String
     Ok(Json(response_json))
 }
 
-pub async fn check_token_status_request(user_id: String, bridgehead: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    // Initialize response structure for project status
+pub async fn check_token_status_request(user_id: String, bridgehead: String, token_name: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let mut response_json = json!({
         "user_id": user_id.clone(),
         "bk": bridgehead.clone(),
         "token_status": OpalTokenStatus::NOTFOUND,
     });
 
-    let task =  match create_and_send_task_request(OpalRequestType::STATUS, Some(user_id.clone().to_string()), None, None, Some(bridgehead)).await {
+    let task =  match create_and_send_task_request(OpalRequestType::STATUS, Some(token_name.clone().to_string()), None, None, Some(bridgehead)).await {
         Ok(result) => result,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Error creating task: {}", e))),
     };
