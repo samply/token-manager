@@ -27,6 +27,7 @@ pub struct OpalRequest {
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct TokenManager {
     pub id: i32,
+    pub token_name: String,
     pub token: String,
     pub project_id: String,
     pub project_status: String,
@@ -39,6 +40,7 @@ pub struct TokenManager {
 #[derive(Insertable)]
 #[diesel(table_name = tokens)]
 pub struct NewToken<'a> {
+    pub token_name: &'a str,
     pub token: &'a str,
     pub project_id: &'a str,
     pub project_status: &'a str,
