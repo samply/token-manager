@@ -50,6 +50,15 @@ pub struct NewToken<'a> {
     pub token_created_at: &'a str,
 }
 
+#[derive(Insertable)]
+#[diesel(table_name = tokens)]
+pub struct TokenStatus<'a> {
+    pub project_id: &'a str,
+    pub bk: &'a str,
+    pub token_status: &'a str,
+    pub user_id: &'a str,
+}
+
 
 #[derive(Deserialize)]
 pub struct TokenStatusQuery {
