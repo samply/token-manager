@@ -9,7 +9,7 @@ use tracing::{error, info, warn};
 
 use crate::config::CONFIG;
 use crate::handlers::{check_project_status_request, fetch_project_tables_request, check_token_status_request};
-use crate::models::{NewToken, TokenManager, TokenParams};
+use crate::models::{NewToken, TokenManager, TokenParams, TokenStatus};
 
 use crate::enums::{OpalTokenStatus, OpalProjectStatus};
 
@@ -83,6 +83,30 @@ impl Db {
             }
             Err(error) => {
                 warn!("Error updating token: {}", error);
+            }
+        }
+    }
+
+    pub fn update_token_status_db(&mut self, token_update: TokenStatus) {
+        use crate::schema::tokens::dsl::*;
+
+        let target = tokens.filter(
+            user_id.eq(&token_update.user_id)
+                .and(project_id.eq(&token_update.project_id))
+                .and(bk.eq(&token_update.bk))
+        );
+
+        match diesel::update(target)
+            .set((
+                token_status.eq(token_update.token_status),
+            ))
+            .execute(&mut self.0)
+        {
+            Ok(_) => {
+                info!("Token status updated in DB");
+            }
+            Err(error) => {
+                warn!("Error updating token status: {}", error);
             }
         }
     }
@@ -201,12 +225,20 @@ impl Db {
                         Ok(json_response) => {
                             let status = json_response.0;
                             token_status_json["token_status"] = status["token_status"].clone();
+                            
+                            let new_token_status = TokenStatus {
+                                project_id: &project.clone(),
+                                bk: &bridgehead.clone(),
+                                token_status: OpalTokenStatus::CREATED.as_str(),
+                                user_id: &user.clone(),
+                            };
+                            self.update_token_status_db(new_token_status);
                         }
                         Err((status, msg)) => {
                             error!("Error retrieving token status: {} {}", status, msg);
                         }
                     }
-                    
+
                 } else {
                     // Notify in response JSON that no project was found instead of returning an error
                     info!("Token not found with user_id: {}", user);
