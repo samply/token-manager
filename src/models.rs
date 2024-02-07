@@ -20,6 +20,7 @@ pub struct OpalRequest {
     pub request_type: String,
     pub name: Option<String>,
     pub project: Option<String>,
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Queryable, Selectable)]
