@@ -26,7 +26,7 @@ pub async fn send_token_registration_request(db: Db, token_params: TokenParams) 
         Some(token_name.clone()),
         Some(token_params.project_id.to_string()),
         Some(&token_params.bridgehead_ids),
-        None
+        None, None
     ).await?;
     
     info!("Created token task {task:#?}");
@@ -39,13 +39,26 @@ pub async fn send_token_registration_request(db: Db, token_params: TokenParams) 
     }
 }
 
+pub async fn send_token_from_db(token_params: TokenParams, token_name: String, token: String){
+    let task = create_and_send_task_request(
+        OpalRequestType::CREATE,
+        Some(token_name.clone()),
+        Some(token_params.project_id.to_string()),
+        Some(&token_params.bridgehead_ids),
+        None, Some(token.clone())
+    ).await;
+    
+    info!("Create token in Opal from DB task");
+    //Ok(())
+}
+
 pub async fn remove_project_and_tokens_request(mut db: Db, project_id: String, bridgehead: String) -> Result<OpalProjectStatusResponse>  {
     let task = create_and_send_task_request(
         OpalRequestType::DELETE,
         None,
         Some(project_id.clone()),
         None,
-        Some(bridgehead)
+        Some(bridgehead), None
     ).await?;
 
     info!("Remove Project and Token request {task:#?}");
@@ -67,7 +80,7 @@ pub async fn remove_tokens_request(mut db: Db, user_id: String, bridgehead: Stri
         Some(user_id.clone().to_string()),
         None,
         None,
-        Some(bridgehead)
+        Some(bridgehead), None
     ).await?;
 
     info!("Remove Tokens request {task:#?}");
@@ -101,7 +114,7 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
         Some(token_name.clone()),
         Some(token_params.project_id.clone().to_string()),
         Some(&token_params.bridgehead_ids),
-        None
+        None, None
     ).await?;
 
     info!("Refresh token task  {task:#?}");
@@ -120,7 +133,7 @@ pub async fn fetch_project_tables_request(token_params: TokenParams) -> Result<V
         Some(token_params.user_id.clone().to_string()),
         Some(token_params.project_id.clone().to_string()),
         Some(&token_params.bridgehead_ids),
-        None
+        None, None
     ).await?;
 
     info!("Fetch Project Tables Status  {task:#?}");
@@ -137,14 +150,14 @@ pub async fn check_project_status_request(project_id: String, bridgehead: String
         "project_status": OpalTokenStatus::NOTFOUND,
     });
 
-    let task =  match create_and_send_task_request(OpalRequestType::STATUS, None, Some(project_id.clone().to_string()), None, Some(bridgehead)).await {
+    let task =  match create_and_send_task_request(OpalRequestType::STATUS, None, Some(project_id.clone().to_string()), None, Some(bridgehead.clone().to_string()), None).await {
         Ok(result) => result,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Error creating task: {}", e))),
     };
 
     info!("Check Project Status  {task:#?}");
        
-    let project_status_result = match status_project_from_beam(task).await {
+    let project_status_result = match status_from_beam(task).await {
         Ok(response) =>{ 
             info!("Project Status response {response:#?}");
             Ok(response)
@@ -172,21 +185,21 @@ pub async fn check_project_status_request(project_id: String, bridgehead: String
     Ok(Json(response_json))
 }
 
-pub async fn check_token_status_request(user_id: String, bridgehead: String, token_name: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+pub async fn check_token_status_request(user_id: String, bridgehead: String, project: String, token_name: String, token: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let mut response_json = json!({
         "user_id": user_id.clone(),
         "bk": bridgehead.clone(),
         "token_status": OpalTokenStatus::NOTFOUND,
     });
 
-    let task =  match create_and_send_task_request(OpalRequestType::STATUS, Some(token_name.clone().to_string()), None, None, Some(bridgehead)).await {
+    let task =  match create_and_send_task_request(OpalRequestType::STATUS, Some(token_name.clone().to_string()), None, None, Some(bridgehead.clone().to_string()), None).await {
         Ok(result) => result,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Error creating task: {}", e))),
     };
 
     info!("Check Token Status  {task:#?}");
        
-    let token_status_result = match status_project_from_beam(task).await {
+    let token_status_result = match status_from_beam(task).await {
         Ok(response) =>{ 
             info!("Token Status response {response:#?}");
             Ok(response)
@@ -199,6 +212,22 @@ pub async fn check_token_status_request(user_id: String, bridgehead: String, tok
     match token_status_result {
         Ok(OpalProjectStatusResponse::Ok { status }) => {
             response_json["token_status"] = json!(status);
+
+            if status == OpalTokenStatus::CREATED.as_str(){
+                
+                response_json["token_status"] = json!(status);
+
+            }else{
+
+                let params = TokenParams {
+                    user_id: user_id.clone(),
+                    project_id: project.clone(),
+                    bridgehead_ids: vec![bridgehead.clone()]
+                };
+
+                send_token_from_db(params,token_name, token).await;  
+                response_json["token_status"] = json!(OpalTokenStatus::CREATED.as_str());
+            }
         },
         Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
             let status = StatusCode::from_u16(status_code as u16)
@@ -324,7 +353,7 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
     }
 }
 
-async fn status_project_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectStatusResponse> {
+async fn status_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectStatusResponse> {
     let res = BEAM_CLIENT
         .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
         .header(header::ACCEPT, HeaderValue::from_static("text/event-stream"))
@@ -493,7 +522,8 @@ async fn create_and_send_task_request(
     name: Option<String>, 
     project: Option<String>, 
     bridgeheads: Option<&[String]>, 
-    bridgehead_single: Option<String>
+    bridgehead_single: Option<String>,
+    token: Option<String> 
 ) -> Result<TaskRequest<OpalRequest>, anyhow::Error> {
     let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2)
         .ok_or_else(|| anyhow::Error::msg("Invalid app id"))?;
@@ -510,6 +540,7 @@ async fn create_and_send_task_request(
         request_type: request_type.to_string(),
         name,
         project,
+        token
     };
 
     let task = TaskRequest {

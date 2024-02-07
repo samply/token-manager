@@ -177,77 +177,55 @@ impl Db {
             "token_status": OpalProjectStatus::NOTFOUND,
         });
 
-        let project_status_response = check_project_status_request(project.clone(), bridgehead.clone()).await;
-        match project_status_response {
-            Ok(json_response) => {
-                let status = json_response.0;
-                token_status_json["project_status"] = status["project_status"].clone();
-            }
-            Err((status, msg)) => {
-                error!("Error retrieving project status: {} {}", status, msg);
-            }
+        if let Ok(json_response) = check_project_status_request(project.clone(), bridgehead.clone()).await {
+            token_status_json["project_status"] = json_response.0["project_status"].clone();
+        } else {
+            error!("Error retrieving project status");
         }
 
-        let token_name_result = self.get_token_name(user.clone(), project.clone());
-
-        let token_name_response = match token_name_result {
-            Ok(Some(name)) => {
-                name},
-            Ok(None) => {
-                return Err((StatusCode::NOT_FOUND, "Token not found".to_string()));
-            },
-            Err(e) => {
-                return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
-            }
+        let token_name_response = match self.get_token_name(user.clone(), project.clone()) {
+            Ok(Some(name)) => name,
+            Ok(None) => return Ok(Json(token_status_json)),
+            Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
         };
 
-        match tokens
+        let records = match tokens
             .filter(user_id.eq(&user))
             .filter(bk.eq(&bridgehead))
             .filter(project_id.eq(&project))
             .select(TokenManager::as_select())
             .load::<TokenManager>(&mut self.0)
         {
-            Ok(records) => {
-                if !records.is_empty() {
-                    // TODO: Check Token Status in Opal: Send token name (token sent only once for being created, but not for checking status)
-                    // TODO: Add token_name to database (generate UUID as token-name)
-                    // TODO: Access to database: serialize -> Encrypt token + deserialize -> decrypt token
-                    // TODO: After getting token status from Opal: Update status in database
-                    // TODO: User case: If token not found in Opal: Call "generate token"
-                    // Update token status from Opal in the database
-                    info!("Project found with project_id: {:?}", &records);
-                    let record = &records[0];
-                    token_status_json["token_created_at"] = json!(record.token_created_at);
-
-                    let token_status_response = check_token_status_request(user.clone(), bridgehead.clone(), token_name_response.clone()).await;
-                    match token_status_response {
-                        Ok(json_response) => {
-                            let status = json_response.0;
-                            token_status_json["token_status"] = status["token_status"].clone();
-                            
-                            let new_token_status = TokenStatus {
-                                project_id: &project.clone(),
-                                bk: &bridgehead.clone(),
-                                token_status: OpalTokenStatus::CREATED.as_str(),
-                                user_id: &user.clone(),
-                            };
-                            self.update_token_status_db(new_token_status);
-                        }
-                        Err((status, msg)) => {
-                            error!("Error retrieving token status: {} {}", status, msg);
-                        }
-                    }
-
-                } else {
-                    // Notify in response JSON that no project was found instead of returning an error
-                    info!("Token not found with user_id: {}", user);
-                }
+            Ok(records) if !records.is_empty() => records,
+            Ok(_) => {
+                info!("Token not found with user_id: {}", &user);
+                return Ok(Json(token_status_json)); 
             }
             Err(err) => {
                 error!("Error calling DB: {}", err);
                 return Err((StatusCode::INTERNAL_SERVER_ERROR, err.to_string()));
             }
+        };
+        
+        let record = &records[0];
+        token_status_json["token_created_at"] = json!(record.token_created_at);
+        let token_value = json!(record.token);
+
+        info!("Token Name found: {}", token_name_response.clone());
+
+        if let Ok(json_response) = check_token_status_request(user.clone(),  bridgehead.clone(), project.clone(), token_name_response.clone(), token_value.clone().to_string()).await {
+            token_status_json["token_status"] = json_response.0["token_status"].clone();
+            
+            let new_token_status = TokenStatus {
+                project_id: &project.clone(),
+                bk: &bridgehead.clone(),
+                token_status: OpalTokenStatus::CREATED.as_str(),
+                user_id: &user.clone(),
+            };
+            self.update_token_status_db(new_token_status);
+
+        } else {
+            error!("Error retrieving token status");
         }
         Ok(Json(token_status_json))
     }
