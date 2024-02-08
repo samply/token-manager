@@ -4,7 +4,7 @@ use crate::config::BEAM_CLIENT;
 use crate::config::CONFIG;
 use crate::db::Db;
 use crate::enums::{OpalResponse, OpalProjectTablesResponse, OpalProjectStatus, OpalProjectStatusResponse, OpalTokenStatus, OpalRequestType};
-use crate::models::{NewToken, OpalRequest, TokenParams};
+use crate::models::{NewToken, OpalRequest, TokenParams, TokensQueryParams};
 use anyhow::Result;
 use async_sse::Event;
 use axum::http::StatusCode;
@@ -48,24 +48,24 @@ pub async fn send_token_from_db(token_params: TokenParams, token_name: String, t
         None, Some(token.clone())
     ).await;
     
-    info!("Create token in Opal from DB task");
+    info!("Create token in Opal from DB task: {:?}", task);
     //Ok(())
 }
 
-pub async fn remove_project_and_tokens_request(mut db: Db, project_id: String, bridgehead: String) -> Result<OpalProjectStatusResponse>  {
+pub async fn remove_project_and_tokens_request(mut db: Db, token_params: TokensQueryParams) -> Result<OpalProjectStatusResponse>  {
     let task = create_and_send_task_request(
         OpalRequestType::DELETE,
         None,
-        Some(project_id.clone()),
+        Some(token_params.project_id.clone()),
         None,
-        Some(bridgehead), None
+        Some(token_params.bk), None
     ).await?;
 
     info!("Remove Project and Token request {task:#?}");
 
     match remove_project_and_tokens_from_beam(task).await {
         Ok(response) => {
-            db.delete_token_db(project_id);
+            db.delete_project_db(token_params.project_id);
             Ok(response)
         },
         Err(e) => {
@@ -74,20 +74,33 @@ pub async fn remove_project_and_tokens_request(mut db: Db, project_id: String, b
     }
 }
 
-pub async fn remove_tokens_request(mut db: Db, user_id: String, bridgehead: String) -> Result<OpalProjectStatusResponse>  {
+pub async fn remove_tokens_request(mut db: Db, token_params: TokensQueryParams) -> Result<OpalProjectStatusResponse>  {
+    let token_name_result = db.get_token_name(token_params.user_id.clone(), token_params.project_id.clone());
+
+    let token_name = match token_name_result {
+        Ok(Some(name)) => name,
+        Ok(None) => {
+            return Err(anyhow::Error::msg("Token not found")) 
+        },
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+
+
     let task = create_and_send_task_request(
         OpalRequestType::DELETE,
-        Some(user_id.clone().to_string()),
+        Some(token_name.clone()),
         None,
         None,
-        Some(bridgehead), None
+        Some(token_params.bk.clone()), None
     ).await?;
 
     info!("Remove Tokens request {task:#?}");
 
     match remove_tokens_from_beam(task).await {
         Ok(response) => {
-            db.delete_user_db(user_id);
+            db.delete_token_db(token_name);
             Ok(response)
         },
         Err(e) => {

@@ -111,7 +111,7 @@ impl Db {
         }
     }
 
-    pub fn delete_token_db(&mut self,
+    pub fn delete_project_db(&mut self,
                            project: String,
     ) {
         use crate::schema::tokens::dsl::*;
@@ -130,13 +130,13 @@ impl Db {
         }
     }
 
-    pub fn delete_user_db(&mut self,
-                          user: String,
+    pub fn delete_token_db(&mut self,
+                          name: String,
     ) {
         use crate::schema::tokens::dsl::*;
 
         let target = tokens.filter(
-            user_id.eq(&user)
+            token_name.eq(&name)
         );
 
         match diesel::delete(target).execute(&mut self.0) {
@@ -209,11 +209,9 @@ impl Db {
         
         let record = &records[0];
         token_status_json["token_created_at"] = json!(record.token_created_at);
-        let token_value = json!(record.token);
+        let token_value = json!(record.token).as_str().unwrap_or_default().to_string();
 
-        info!("Token Name found: {}", token_name_response.clone());
-
-        if let Ok(json_response) = check_token_status_request(user.clone(),  bridgehead.clone(), project.clone(), token_name_response.clone(), token_value.clone().to_string()).await {
+        if let Ok(json_response) = check_token_status_request(user.clone(),  bridgehead.clone(), project.clone(), token_name_response.clone(), token_value.clone()).await {
             token_status_json["token_status"] = json_response.0["token_status"].clone();
             
             let new_token_status = TokenStatus {
