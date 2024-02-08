@@ -1,9 +1,9 @@
 use crate::db::Db;
 use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request, remove_tokens_request, check_project_status_request};
 use crate::enums::{OpalResponse, OpalProjectStatusResponse};
-use crate::models::{TokenParams, TokensQueryParams, ProjectStatusQuery};
+use crate::models::{TokenParams, TokensQueryParams, ProjectQueryParams};
 use axum::{
-    extract::{Path, Query},
+    extract::Query,
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post, put, delete},
@@ -34,7 +34,7 @@ async fn create_token(
 
 
 async fn check_project_status(
-    query: Query<ProjectStatusQuery>,
+    query: Query<ProjectQueryParams>,
 ) -> impl IntoResponse {
     let params = query.0;
     match check_project_status_request(params.project_id, params.bk).await {
@@ -87,7 +87,7 @@ async fn refresh_token(
 }
 
 async fn remove_project_and_token(db: Db, 
-    query: Query<TokensQueryParams>,
+    query: Query<ProjectQueryParams>,
     ) -> impl IntoResponse {
     match remove_project_and_tokens_request(db, query.0).await {
         Ok(OpalProjectStatusResponse::Ok { .. }) =>  StatusCode::OK.into_response(), 

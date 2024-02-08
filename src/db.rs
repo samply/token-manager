@@ -8,10 +8,11 @@ use anyhow::Result;
 use tracing::{error, info, warn};
 
 use crate::config::CONFIG;
+use crate::schema::tokens::dsl::*;
+use crate::schema::tokens;
+use crate::enums::{OpalTokenStatus, OpalProjectStatus};
 use crate::handlers::{check_project_status_request, fetch_project_tables_request, check_token_status_request};
 use crate::models::{NewToken, TokenManager, TokenParams, TokenStatus};
-
-use crate::enums::{OpalTokenStatus, OpalProjectStatus};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -44,11 +45,10 @@ impl<S> FromRequestParts<S> for Db
 }
 
 impl Db {
-    pub fn save_token_db(&mut self, token: NewToken) {
-        use crate::schema::tokens;
+    pub fn save_token_db(&mut self, new_token: NewToken) {
 
         match diesel::insert_into(tokens::table)
-            .values(&token)
+            .values(&new_token)
             .on_conflict_do_nothing()
             .execute(&mut self.0)
         {
@@ -62,7 +62,7 @@ impl Db {
     }
 
     pub fn update_token_db(&mut self, token_update: NewToken) {
-        use crate::schema::tokens::dsl::*;
+
 
         let target = tokens.filter(
             user_id.eq(&token_update.user_id)
@@ -88,7 +88,7 @@ impl Db {
     }
 
     pub fn update_token_status_db(&mut self, token_update: TokenStatus) {
-        use crate::schema::tokens::dsl::*;
+
 
         let target = tokens.filter(
             user_id.eq(&token_update.user_id)
@@ -114,7 +114,7 @@ impl Db {
     pub fn delete_project_db(&mut self,
                            project: String,
     ) {
-        use crate::schema::tokens::dsl::*;
+
 
         let target = tokens.filter(
             project_id.eq(&project)
@@ -133,7 +133,7 @@ impl Db {
     pub fn delete_token_db(&mut self,
                           name: String,
     ) {
-        use crate::schema::tokens::dsl::*;
+
 
         let target = tokens.filter(
             token_name.eq(&name)
@@ -150,7 +150,7 @@ impl Db {
     }
 
     pub fn get_token_name(&mut self, user: String, project: String) -> Result<Option<String>, Error> {
-        use crate::schema::tokens::dsl::*;
+
 
         tokens
             .filter(user_id.eq(user))
@@ -166,7 +166,7 @@ impl Db {
         bridgehead: String,
         project: String,
     ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-        use crate::schema::tokens::dsl::*;
+
 
         let mut token_status_json = json!({
             "project_id": project.clone(),
@@ -229,14 +229,9 @@ impl Db {
     }
 
     pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {
-        use crate::schema::tokens::dsl::*;
-
         let tables_result = fetch_project_tables_request(query.clone()).await;
-
-        // Initialize script lines vector
         let mut script_lines = Vec::new();
 
-        // First check if tables_result is Ok and records are available
         if let Ok(tables) = tables_result {
             info!("Result from status_project_from_beam: {:?}", tables);
 
@@ -249,10 +244,6 @@ impl Db {
             match records {
                 Ok(records) => {
                     if !records.is_empty() {
-                        // TODO: Check token status for "every token": If token not found (and project with data): generate token again and update database
-                        // If it is not possible to generate a token because project not found, remove token of the database and ignore entry for the final script
-                        // If no token is found anywhere, don't send any token at all.
-                        // Nested loop: For each table, loop through each record
                         for record in &records {
                             for table in &tables {
                                 script_lines.push(format!(

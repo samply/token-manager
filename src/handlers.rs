@@ -4,7 +4,7 @@ use crate::config::BEAM_CLIENT;
 use crate::config::CONFIG;
 use crate::db::Db;
 use crate::enums::{OpalResponse, OpalProjectTablesResponse, OpalProjectStatus, OpalProjectStatusResponse, OpalTokenStatus, OpalRequestType};
-use crate::models::{NewToken, OpalRequest, TokenParams, TokensQueryParams};
+use crate::models::{NewToken, OpalRequest, TokenParams, TokensQueryParams, ProjectQueryParams};
 use anyhow::Result;
 use async_sse::Event;
 use axum::http::StatusCode;
@@ -52,7 +52,7 @@ pub async fn send_token_from_db(token_params: TokenParams, token_name: String, t
     //Ok(())
 }
 
-pub async fn remove_project_and_tokens_request(mut db: Db, token_params: TokensQueryParams) -> Result<OpalProjectStatusResponse>  {
+pub async fn remove_project_and_tokens_request(mut db: Db, token_params: ProjectQueryParams) -> Result<OpalProjectStatusResponse>  {
     let task = create_and_send_task_request(
         OpalRequestType::DELETE,
         None,
