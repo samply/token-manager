@@ -1,7 +1,7 @@
 use crate::db::Db;
 use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request, remove_tokens_request, check_project_status_request};
 use crate::enums::{OpalResponse, OpalProjectStatusResponse};
-use crate::models::{TokenParams, TokenStatusQuery, ProjectStatusQuery};
+use crate::models::{TokenParams, TokensQueryParams, ProjectStatusQuery};
 use axum::{
     extract::{Path, Query},
     http::StatusCode,
@@ -45,7 +45,7 @@ async fn check_project_status(
 
 async fn check_token_status(
     mut db: Db,
-    query: Query<TokenStatusQuery>,
+    query: Query<TokensQueryParams>,
 ) -> impl IntoResponse {
     let params = query.0;
     match db.check_token_status(params.user_id, params.bk, params.project_id).await {
@@ -86,8 +86,10 @@ async fn refresh_token(
     }
 }
 
-async fn remove_project_and_token(db: Db, Path((project_id, bk)): Path<(String, String)>) -> impl IntoResponse {
-    match remove_project_and_tokens_request(db, project_id, bk).await {
+async fn remove_project_and_token(db: Db, 
+    query: Query<TokensQueryParams>,
+    ) -> impl IntoResponse {
+    match remove_project_and_tokens_request(db, query.0).await {
         Ok(OpalProjectStatusResponse::Ok { .. }) =>  StatusCode::OK.into_response(), 
         Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
             let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -100,8 +102,10 @@ async fn remove_project_and_token(db: Db, Path((project_id, bk)): Path<(String, 
     }
 }
 
-async fn remove_tokens(db: Db, Path((project_id, bk)): Path<(String, String)>) -> impl IntoResponse {
-    match remove_tokens_request(db, project_id, bk).await {
+async fn remove_tokens(db: Db, 
+    query: Query<TokensQueryParams>,
+    ) -> impl IntoResponse {
+    match remove_tokens_request(db, query.0).await {
         Ok(OpalProjectStatusResponse::Ok { .. }) =>  StatusCode::OK.into_response(), 
         Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
             let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -117,11 +121,11 @@ async fn remove_tokens(db: Db, Path((project_id, bk)): Path<(String, String)>) -
 pub fn configure_routes(pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::prelude::SqliteConnection>>) -> Router {
     Router::new()
         .route("/token", post(create_token))
-        .route("/token/:user_id/:bk", delete(remove_tokens))
+        .route("/token", delete(remove_tokens))
         .route("/token-status", get(check_token_status))
         .route("/project-status", get(check_project_status))
         .route("/script", post(generate_script))
         .route("/refreshToken", put(refresh_token))
-        .route("/project/:project_id/:bk", delete(remove_project_and_token)) 
+        .route("/project", delete(remove_project_and_token)) 
         .with_state(pool)
 }
