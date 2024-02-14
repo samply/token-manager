@@ -11,7 +11,7 @@ use crate::config::CONFIG;
 use crate::schema::tokens::dsl::*;
 use crate::schema::tokens;
 use crate::enums::{OpalTokenStatus, OpalProjectStatus};
-use crate::handlers::{check_project_status_request, fetch_project_tables_request, check_token_status_request};
+use crate::handlers::{check_project_status_request, fetch_project_tables_names_request, check_token_status_request};
 use crate::models::{NewToken, TokenManager, TokenParams, TokenStatus};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -150,12 +150,19 @@ impl Db {
     }
 
     pub fn get_token_name(&mut self, user: String, project: String) -> Result<Option<String>, Error> {
-
-
         tokens
             .filter(user_id.eq(user))
             .filter(project_id.eq(project))
             .select(token_name)
+            .first::<String>(&mut self.0)
+            .optional() 
+    }
+
+    pub fn get_token_value(&mut self, user: String, project: String) -> Result<Option<String>, Error> {
+        tokens
+            .filter(user_id.eq(user))
+            .filter(project_id.eq(project))
+            .select(token)
             .first::<String>(&mut self.0)
             .optional() 
     }
@@ -229,7 +236,7 @@ impl Db {
     }
 
     pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {
-        let tables_result = fetch_project_tables_request(query.clone()).await;
+        let tables_result = fetch_project_tables_names_request(query.clone()).await;
         let mut script_lines = Vec::new();
 
         if let Ok(tables) = tables_result {

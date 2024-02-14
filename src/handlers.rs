@@ -110,12 +110,21 @@ pub async fn remove_tokens_request(mut db: Db, token_params: TokensQueryParams) 
 }
 
 pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Result<OpalResponse> {
-    let token_name_result = db.get_token_name(token_params.user_id.clone(), token_params.project_id.clone());
-    
-    let token_name = match token_name_result {
+
+    let token_name = match db.get_token_name(token_params.user_id.clone(), token_params.project_id.clone()) {
         Ok(Some(name)) => name,
         Ok(None) => {
-            return Err(anyhow::Error::msg("Token not found")) 
+            return Err(anyhow::Error::msg("Token name not found")) 
+        },
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
+    
+    let token_value = match db.get_token_value(token_params.user_id.clone(), token_params.project_id.clone()) {
+        Ok(Some(value)) => value,
+        Ok(None) => {
+            return Err(anyhow::Error::msg("Token value not found")) 
         },
         Err(e) => {
             return Err(e.into());
@@ -127,7 +136,7 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
         Some(token_name.clone()),
         Some(token_params.project_id.clone().to_string()),
         Some(&token_params.bridgehead_ids),
-        None, None
+        None, Some(token_value.clone())
     ).await?;
 
     info!("Refresh token task  {task:#?}");
@@ -140,7 +149,7 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
     }
 }
 
-pub async fn fetch_project_tables_request(token_params: TokenParams) -> Result<Vec<String>, anyhow::Error> {
+pub async fn fetch_project_tables_names_request(token_params: TokenParams) -> Result<Vec<String>, anyhow::Error> {
     let task = create_and_send_task_request(
         OpalRequestType::SCRIPT,
         Some(token_params.user_id.clone().to_string()),
