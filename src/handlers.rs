@@ -31,12 +31,8 @@ pub async fn send_token_registration_request(db: Db, token_params: TokenParams) 
     
     info!("Created token task {task:#?}");
  
-    match save_tokens_from_beam(db, task, token_params, token_name).await {
-        Ok(response) => Ok(response),
-        Err(e) => {
-            Err(e)
-        }
-    }
+    tokio::task::spawn(save_tokens_from_beam(db, task, token_params, token_name));
+    Ok(OpalResponse::Ok { token: "OK".to_string() })
 }
 
 pub async fn send_token_from_db(token_params: TokenParams, token_name: String, token: String){
@@ -141,12 +137,8 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
 
     info!("Refresh token task  {task:#?}");
 
-    match update_tokens_from_beam(db, task, token_params, token_name.clone()).await {
-        Ok(response) => Ok(response),
-        Err(e) => {
-            Err(e)
-        }
-    }
+    tokio::task::spawn(update_tokens_from_beam(db, task, token_params, token_name.clone()));
+    Ok(OpalResponse::Ok { token: "OK".to_string() })
 }
 
 pub async fn fetch_project_tables_names_request(token_params: TokenParams) -> Result<Vec<String>, anyhow::Error> {
@@ -265,7 +257,7 @@ pub async fn check_token_status_request(user_id: String, bridgehead: String, pro
     Ok(Json(response_json))
 }
 
-async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams, token_name: String) -> Result<OpalResponse> {
+async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams, token_name: String) -> Result<()> {
     let today = Local::now();
     let formatted_date = today.format("%d-%m-%Y").to_string();
 
@@ -294,7 +286,7 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
         match result.body {
             OpalResponse::Err { status_code, error } => {
                 warn!("{} failed to create a token with status code: {status_code}, error: {error}", result.from);
-                return Ok(OpalResponse::Err { status_code, error });
+                last_error = Some(format!("Error: {error}"));
             },
             OpalResponse::Ok { token } => {
                 let site_name = result.from.as_ref().split('.').nth(1).expect("Valid app id");
@@ -309,18 +301,18 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
                     token_created_at: &formatted_date,
                 };
                 db.save_token_db(new_token);
-                return Ok(OpalResponse::Ok { token });
             },
         }
     }
 
-    match last_error {
-        Some(e) => Err(anyhow::Error::msg(e)),
-        None => Err(anyhow::Error::msg("No messages received or processed")), 
+    if let Some(e) = last_error {
+        warn!("Error processing task {}: {}", task.id, e);
     }
+    Ok(())
 }
 
-async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams, token_name: String) -> Result<OpalResponse>  {
+
+async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams, token_name: String) -> Result<()>  {
     let today = Local::now();
     let formatted_date = today.format("%d-%m-%Y").to_string();
 
@@ -349,7 +341,7 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
         match result.body {
             OpalResponse::Err { status_code, error } => {
                 warn!("{} failed to create a token with status code: {status_code}, error: {error}", result.from);
-                return Ok(OpalResponse::Err { status_code, error });
+                last_error = Some(format!("Error: {error}"));
             },
             OpalResponse::Ok { token } => {
                 let site_name = result.from.as_ref().split('.').nth(1).expect("Valid app id");
@@ -364,15 +356,14 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
                     token_created_at: &formatted_date,
                 };
                 db.update_token_db(new_token);
-                return Ok(OpalResponse::Ok { token });
             },
         }
     }
 
-    match last_error {
-        Some(e) => Err(anyhow::Error::msg(e)),
-        None => Err(anyhow::Error::msg("No messages received or processed")), 
+    if let Some(e) = last_error {
+        warn!("Error processing task {}: {}", task.id, e);
     }
+    Ok(())
 }
 
 async fn status_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectStatusResponse> {
