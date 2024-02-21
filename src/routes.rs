@@ -34,10 +34,9 @@ async fn create_token(
 
 
 async fn check_project_status(
-    query: Query<ProjectQueryParams>,
+    status_query: Query<ProjectQueryParams>,
 ) -> impl IntoResponse {
-    let params = query.0;
-    match check_project_status_request(params.project_id, params.bk).await {
+    match check_project_status_request(status_query.0).await {
         Ok(json) => (StatusCode::OK, json).into_response(),
         Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
     }
@@ -45,10 +44,9 @@ async fn check_project_status(
 
 async fn check_token_status(
     mut db: Db,
-    query: Query<TokensQueryParams>,
+    status_query: Query<TokensQueryParams>,
 ) -> impl IntoResponse {
-    let params = query.0;
-    match db.check_token_status(params.user_id, params.bk, params.project_id).await {
+    match db.check_token_status(status_query.0).await {
         Ok(json) => (StatusCode::OK, json).into_response(),
         Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
     }
