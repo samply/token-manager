@@ -157,14 +157,14 @@ pub async fn fetch_project_tables_names_request(token_params: TokenParams) -> Re
     result
 }
 
-pub async fn check_project_status_request(project_id: String, bridgehead: String) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+pub async fn check_project_status_request(query_params: ProjectQueryParams) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
     let mut response_json = json!({
-        "project_id": project_id.clone(),
-        "bk": bridgehead.clone(),
+        "project_id": query_params.project_id.clone(),
+        "bk": query_params.bk.clone(),
         "project_status": OpalTokenStatus::NOTFOUND,
     });
 
-    let task =  match create_and_send_task_request(OpalRequestType::STATUS, None, Some(project_id.clone().to_string()), Some(vec![bridgehead.clone().to_string()]), None).await {
+    let task =  match create_and_send_task_request(OpalRequestType::STATUS, None, Some(query_params.project_id.clone().to_string()), Some(vec![query_params.bk.clone().to_string()]), None).await {
         Ok(result) => result,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Error creating task: {}", e))),
     };
@@ -540,7 +540,7 @@ async fn create_and_send_task_request(
     let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2)
         .ok_or_else(|| anyhow::Error::msg("Invalid app id"))?;
 
-    let bks: Vec<_> = bridgeheads.unwrap_or_else(|| Vec::new()).iter().map(|bk| AppId::new_unchecked(format!("{}.{}.{}", CONFIG.opal_beam_name, bk, broker))).collect();
+    let bks: Vec<_> = bridgeheads.unwrap_or_else(Vec::new).iter().map(|bridgehead_id| {AppId::new_unchecked(format!("{}.{}", bridgehead_id, broker))}).collect();
 
     let request = OpalRequest {
         request_type: request_type.to_string(),

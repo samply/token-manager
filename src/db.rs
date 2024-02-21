@@ -12,7 +12,7 @@ use crate::schema::tokens::dsl::*;
 use crate::schema::tokens;
 use crate::enums::{OpalTokenStatus, OpalProjectStatus};
 use crate::handlers::{check_project_status_request, fetch_project_tables_names_request, check_token_status_request};
-use crate::models::{NewToken, TokenManager, TokenParams, TokenStatus};
+use crate::models::{NewToken, TokenManager, TokenParams, TokenStatus, TokensQueryParams, ProjectQueryParams};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -167,45 +167,39 @@ impl Db {
             .optional() 
     }
 
-    pub async fn check_token_status(
-        &mut self,
-        user: String,
-        bridgehead: String,
-        project: String,
-    ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-
+    pub async fn check_token_status(&mut self, params: TokensQueryParams) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
 
         let mut token_status_json = json!({
-            "project_id": project.clone(),
-            "bk": bridgehead.clone(),
-            "user_id": user.clone(),
+            "project_id": params.project_id.clone(),
+            "bk": params.bk.clone(),
+            "user_id": params.user_id.clone(),
             "token_created_at": "",
             "project_status": OpalTokenStatus::NOTFOUND,
             "token_status": OpalProjectStatus::NOTFOUND,
         });
 
-        if let Ok(json_response) = check_project_status_request(project.clone(), bridgehead.clone()).await {
+        if let Ok(json_response) = check_project_status_request(ProjectQueryParams { bk: params.bk.clone(), project_id: params.project_id.clone()}).await {
             token_status_json["project_status"] = json_response.0["project_status"].clone();
         } else {
             error!("Error retrieving project status");
         }
 
-        let token_name_response = match self.get_token_name(user.clone(), project.clone()) {
+        let token_name_response = match self.get_token_name(params.user_id.clone(), params.project_id.clone()) {
             Ok(Some(name)) => name,
             Ok(None) => return Ok(Json(token_status_json)),
             Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
         };
 
         let records = match tokens
-            .filter(user_id.eq(&user))
-            .filter(bk.eq(&bridgehead))
-            .filter(project_id.eq(&project))
+            .filter(user_id.eq(&params.user_id))
+            .filter(bk.eq(&params.bk))
+            .filter(project_id.eq(&params.project_id))
             .select(TokenManager::as_select())
             .load::<TokenManager>(&mut self.0)
         {
             Ok(records) if !records.is_empty() => records,
             Ok(_) => {
-                info!("Token not found with user_id: {}", &user);
+                info!("Token not found with user_id: {}", &params.user_id);
                 return Ok(Json(token_status_json)); 
             }
             Err(err) => {
@@ -218,14 +212,14 @@ impl Db {
         token_status_json["token_created_at"] = json!(record.token_created_at);
         let token_value = json!(record.token).as_str().unwrap_or_default().to_string();
 
-        if let Ok(json_response) = check_token_status_request(user.clone(),  bridgehead.clone(), project.clone(), token_name_response.clone(), token_value.clone()).await {
+        if let Ok(json_response) = check_token_status_request(params.user_id.clone(),  params.bk.clone(), params.project_id.clone(), token_name_response.clone(), token_value.clone()).await {
             token_status_json["token_status"] = json_response.0["token_status"].clone();
             
             let new_token_status = TokenStatus {
-                project_id: &project.clone(),
-                bk: &bridgehead.clone(),
+                project_id: &params.project_id.clone(),
+                bk: &params.bk.clone(),
                 token_status: OpalTokenStatus::CREATED.as_str(),
-                user_id: &user.clone(),
+                user_id: &params.user_id.clone(),
             };
             self.update_token_status_db(new_token_status);
 
