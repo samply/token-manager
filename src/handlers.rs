@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io;
 
 use crate::config::BEAM_CLIENT;
@@ -421,33 +422,33 @@ async fn fetch_project_tables_from_beam(task: TaskRequest<OpalRequest>) -> Resul
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
         .into_async_read()
     );
-    while let Some(Ok(Event::Message(msg))) =  stream.next().await {
-        if msg.name() == "error" {
-            warn!("{}", String::from_utf8_lossy(msg.data()));
-            break;
-        }
 
+    let mut list_table_names = HashSet::new();
+
+    while let Some(Ok(Event::Message(msg))) =  stream.next().await {
         let result: TaskResult<OpalProjectTablesResponse> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
             Err(e) => {
-                warn!("Failed to deserialize message {msg:?} into a result: {e}");
+                let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
+                warn!("{error_msg}");
                 continue;
             },
         };
         
-        let tables = &match result.body {
+        match result.body {
             OpalProjectTablesResponse::Err { error } => {
-                warn!("{} failed to update a token: {error}", result.from);
+                warn!("{} failed to fetch tables: {error}", result.from);
                 continue;
             },
-            OpalProjectTablesResponse::Ok { tables } => tables,
+            OpalProjectTablesResponse::Ok { tables } =>{
+                info!("Fetched tables: {:?}", tables);
+                //list_table_names.extend(tables); 
+                list_table_names.extend(tables.into_iter());
+            } 
         };
-        
-        info!("Check Project Status From Beam {tables:#?}");
-
-        return Ok(tables.clone());
     };
-    Err(anyhow::Error::msg("No valid result obtained from the stream"))
+    
+    return Ok(list_table_names.into_iter().collect())
 }
 
 async fn remove_project_and_tokens_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectStatusResponse> {
