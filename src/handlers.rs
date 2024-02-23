@@ -538,10 +538,10 @@ async fn create_and_send_task_request(
     bridgeheads: Option<Vec<String>>,
     token: Option<String> 
 ) -> Result<TaskRequest<OpalRequest>, anyhow::Error> {
-    let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2)
-        .ok_or_else(|| anyhow::Error::msg("Invalid app id"))?;
+    //let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2)
+    //    .ok_or_else(|| anyhow::Error::msg("Invalid app id"))?;
 
-    let bks: Vec<_> = bridgeheads.unwrap_or_else(Vec::new).iter().map(|bridgehead_id| {AppId::new_unchecked(format!("{}.{}", bridgehead_id, broker))}).collect();
+    let bks: Vec<_> = bridgeheads.unwrap_or_else(Vec::new).iter().map(|bridgehead_id| {AppId::new_unchecked(format!("{}", bridgehead_id))}).collect();
 
     let request = OpalRequest {
         request_type: request_type.to_string(),
