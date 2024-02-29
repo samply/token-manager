@@ -231,48 +231,52 @@ impl Db {
 
     pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {
         let tables_result = fetch_project_tables_names_request(query.clone()).await;
-        let mut script_lines = Vec::new();
+    
+        match tables_result {
+            Ok(tables) => {
+                let mut script_lines = Vec::new();
+    
+                for bridgehead in &query.bridgehead_ids {
 
-        if let Ok(tables) = tables_result {
-            info!("Result from status_project_from_beam: {:?}", tables);
-
-            let records = tokens
-                .filter(project_id.eq(&query.project_id))
-                .filter(user_id.eq(&query.user_id))
-                .select(TokenManager::as_select())
-                .load::<TokenManager>(&mut self.0);
-
-            match records {
-                Ok(records) => {
-                    if !records.is_empty() {
-                        for record in &records {
-                            for table in &tables {
-                                script_lines.push(format!(
-                                    "builder$append(server='{}', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
-                                    record.bk, record.bk, record.token, table
-                                ));
+                    let records_result = tokens
+                    .filter(project_id.eq(&query.project_id))
+                    .filter(user_id.eq(&query.user_id))
+                    .filter(bk.eq(bridgehead))
+                    .order(id.desc())
+                    .select(TokenManager::as_select())
+                    .first::<TokenManager>(&mut self.0);
+    
+                    match records_result {
+                        Ok(record) => {
+                                for table in &tables {
+                                    let site_name = record.bk.split('.').nth(1).expect("Valid app id");
+                                    script_lines.push(format!(
+                                        "builder$append(server='{}', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
+                                        site_name, record.bk, record.token, table
+                                    ));
+                                }
                             }
-                        }
-                        let script = generate_r_script(script_lines);
-                        Ok(script)
-                    } else {
-                        info!("No records were found");
-                        Ok("No records found for the given project and user.".into())
+                        Err(_) => {
+                            info!("No records were found");
+                            return Ok("No records found for the given project and user.".into());
+                        },
                     }
                 }
-                Err(err) => {
-                    error!("Error loading records: {}", err);
-                    Err(format!("Error loading records: {}", err))
+    
+                if !script_lines.is_empty() {
+                    let script = generate_r_script(script_lines); // Assuming this function exists and works as intended
+                    Ok(script)
+                } else {
+                    Ok("No records found for the given project and user.".into())
                 }
-            }
-        } else {
-            if let Err(e) = tables_result {
-                info!("Error in status_project_from_beam: {:?}", e);
-            }
-            Err("Error obtaining table names.".into())
+            },
+            Err(e) => {
+                error!("Error in fetch_project_tables_names_request: {:?}", e);
+                Err("Error obtaining table names.".into())
+            },
         }
     }
-}
+}    
 
 fn generate_r_script(script_lines: Vec<String>) -> String {
     let mut builder_script = String::from(

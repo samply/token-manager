@@ -315,7 +315,7 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
 
 async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token_params: TokenParams, token_name: String) -> Result<()>  {
     let today = Local::now();
-    let formatted_date = today.format("%d-%m-%Y").to_string();
+    let formatted_date = today.format("%d-%m-%Y %H:%M:%S").to_string();
 
     let res = BEAM_CLIENT
         .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
@@ -345,7 +345,7 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
                 last_error = Some(format!("Error: {error}"));
             },
             OpalResponse::Ok { token } => {
-                let site_name = result.from.as_ref().split('.').nth(1).expect("Valid app id");
+                let site_name = result.from.as_ref(); //.split('.').nth(1).expect("Valid app id");
                 let new_token = NewToken {
                     token_name: &token_name,
                     token: &token,
