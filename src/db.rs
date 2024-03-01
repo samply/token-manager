@@ -187,8 +187,8 @@ impl Db {
         let token_available = self.is_any_token_available(params);
     
         match token_available {
-            Ok(true) => Ok("Token(s) available for at least one of the specified bridgeheads.".to_string()),
-            Ok(false) => Err((StatusCode::NOT_FOUND, "No tokens found for any of the specified bridgeheads.".to_string())),
+            Ok(true) => Ok("true".to_string()),
+            Ok(false) => Ok("false".to_string()),
             Err(_) => Err((StatusCode::INTERNAL_SERVER_ERROR, "Error checking token availability.".to_string())),
         }
     }
