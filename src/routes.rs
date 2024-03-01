@@ -52,6 +52,16 @@ async fn check_token_status(
     }
 }
 
+async fn check_script_status(
+    mut db: Db,
+    status_params: Json<TokenParams>,
+) -> impl IntoResponse {
+    match db.check_script_status(status_params.0).await {
+        Ok(json) => (StatusCode::OK, json).into_response(),
+        Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
+    }
+}
+
 async fn generate_script(
     mut db: Db,
     script_params: Json<TokenParams>,
@@ -124,6 +134,7 @@ pub fn configure_routes(pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager
         .route("/project-status", get(check_project_status))
         .route("/script", post(generate_script))
         .route("/refreshToken", put(refresh_token))
-        .route("/project", delete(remove_project_and_token)) 
+        .route("/project", delete(remove_project_and_token))
+        .route("/authentication-status", post(check_script_status)) 
         .with_state(pool)
 }

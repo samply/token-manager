@@ -167,7 +167,39 @@ impl Db {
             .optional() 
     }
 
-    pub async fn check_token_status(&mut self, params: TokensQueryParams) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    pub fn is_token_available(&mut self, user: String, project: String, bridgehead: String) -> Result<Option<TokenManager>, Error> {
+        tokens
+        .filter(user_id.eq(user))
+        .filter(project_id.eq(project))
+        .filter(bk.eq(bridgehead))
+        .order(id.desc())
+        .select(TokenManager::as_select())
+        .first::<TokenManager>(&mut self.0)
+        .optional()
+    }
+
+    pub async fn check_script_status(&mut self, params: TokenParams) -> Result<String, (StatusCode, String)> {
+        let mut missing_bridgeheads = Vec::new();
+        for bridgehead in params.bridgehead_ids.iter() {
+            let token_available = self.is_token_available(params.user_id.clone(), params.project_id.clone(), bridgehead.clone());
+            if token_available.is_err() || token_available.unwrap().is_none() {
+                missing_bridgeheads.push(bridgehead.clone());
+            }
+        }
+
+        if missing_bridgeheads.len() < params.bridgehead_ids.len() {
+            let message = format!("Missing some tokens for bridgeheads: {:?}", missing_bridgeheads);
+            info!(message);
+            Ok(message)
+        } else {
+            let error_message = format!("Missing all tokens for bridgeheads: {:?}", missing_bridgeheads);
+            info!(error_message);
+            Err((StatusCode::NOT_FOUND, error_message ))
+        }
+    }
+
+
+   pub async fn check_token_status(&mut self, params: TokensQueryParams) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
 
         let mut token_status_json = json!({
             "project_id": params.project_id.clone(),
