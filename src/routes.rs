@@ -57,7 +57,7 @@ async fn check_script_status(
     status_params: Json<TokenParams>,
 ) -> impl IntoResponse {
     match db.check_script_status(status_params.0).await {
-        Ok(json) => (StatusCode::OK, json).into_response(),
+        Ok(json) => (StatusCode::OK, Json(json!({"message": json}))).into_response(),
         Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
     }
 }
