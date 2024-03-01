@@ -167,37 +167,31 @@ impl Db {
             .optional() 
     }
 
-    pub fn is_token_available(&mut self, user: String, project: String, bridgehead: String) -> Result<Option<TokenManager>, Error> {
-        tokens
-        .filter(user_id.eq(user))
-        .filter(project_id.eq(project))
-        .filter(bk.eq(bridgehead))
-        .order(id.desc())
-        .select(TokenManager::as_select())
-        .first::<TokenManager>(&mut self.0)
-        .optional()
+    pub fn is_any_token_available(&mut self, params: TokenParams) -> Result<bool, Error> {
+        
+        let result = tokens
+            .filter(user_id.eq(params.user_id))
+            .filter(project_id.eq(params.project_id))
+            .filter(bk.eq_any(params.bridgehead_ids))
+            .first::<TokenManager>(&mut self.0)
+            .optional();
+    
+            match result {
+                Ok(Some(_)) => Ok(true), 
+                Ok(None) => Ok(false), 
+                Err(e) => Err(e),
+            }
     }
 
     pub async fn check_script_status(&mut self, params: TokenParams) -> Result<String, (StatusCode, String)> {
-        let mut missing_bridgeheads = Vec::new();
-        for bridgehead in params.bridgehead_ids.iter() {
-            let token_available = self.is_token_available(params.user_id.clone(), params.project_id.clone(), bridgehead.clone());
-            if token_available.is_err() || token_available.unwrap().is_none() {
-                missing_bridgeheads.push(bridgehead.clone());
-            }
-        }
-
-        if missing_bridgeheads.len() < params.bridgehead_ids.len() {
-            let message = format!("Missing some tokens for bridgeheads: {:?}", missing_bridgeheads);
-            info!(message);
-            Ok(message)
-        } else {
-            let error_message = format!("Missing all tokens for bridgeheads: {:?}", missing_bridgeheads);
-            info!(error_message);
-            Err((StatusCode::NOT_FOUND, error_message ))
+        let token_available = self.is_any_token_available(params);
+    
+        match token_available {
+            Ok(true) => Ok("Token(s) available for at least one of the specified bridgeheads.".to_string()),
+            Ok(false) => Err((StatusCode::NOT_FOUND, "No tokens found for any of the specified bridgeheads.".to_string())),
+            Err(_) => Err((StatusCode::INTERNAL_SERVER_ERROR, "Error checking token availability.".to_string())),
         }
     }
-
 
    pub async fn check_token_status(&mut self, params: TokensQueryParams) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
 
