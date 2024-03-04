@@ -13,6 +13,7 @@ use crate::schema::tokens;
 use crate::enums::{OpalTokenStatus, OpalProjectStatus};
 use crate::handlers::{check_project_status_request, fetch_project_tables_names_request, check_token_status_request};
 use crate::models::{NewToken, TokenManager, TokenParams, TokenStatus, TokensQueryParams, ProjectQueryParams};
+use crate::utils::{decrypt_data, generate_r_script};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -62,28 +63,35 @@ impl Db {
     }
 
     pub fn update_token_db(&mut self, token_update: NewToken) {
-
-
-        let target = tokens.filter(
-            user_id.eq(&token_update.user_id)
+        // Attempt to find the `id` of the last record matching the criteria
+        let maybe_last_id = tokens
+            .filter(
+                user_id.eq(&token_update.user_id)
                 .and(project_id.eq(&token_update.project_id))
                 .and(bk.eq(&token_update.bk))
-        );
-
-        match diesel::update(target)
-            .set((
-                token.eq(token_update.token),
-                token_status.eq("UPDATED"),
-                token_created_at.eq(&token_update.token_created_at),
-            ))
-            .execute(&mut self.0)
-        {
-            Ok(_) => {
-                info!("Token updated in DB");
+            )
+            .select(id)
+            .order(id.desc())
+            .first::<i32>(&mut self.0) // Assuming `id` is of type `i32`
+            .optional(); // Use `.optional()` to handle cases where no records are found
+    
+        if let Ok(Some(last_id)) = maybe_last_id {
+            // If a last record is found, perform the update
+            let target = tokens.filter(id.eq(last_id));
+            match diesel::update(target)
+                .set((
+                    token.eq(&token_update.token),
+                    token_status.eq("UPDATED"),
+                    token_created_at.eq(&token_update.token_created_at),
+                ))
+                .execute(&mut self.0)
+            {
+                Ok(_) => info!("Token updated in DB"),
+                Err(error) => warn!("Error updating token: {}", error),
             }
-            Err(error) => {
-                warn!("Error updating token: {}", error);
-            }
+        } else if let Err(error) = maybe_last_id {
+            // Handle potential errors from the `first` query
+            warn!("Error finding last token record: {}", error);
         }
     }
 
@@ -153,15 +161,17 @@ impl Db {
         tokens
             .filter(user_id.eq(user))
             .filter(project_id.eq(project))
+            .order(id.desc())
             .select(token_name)
             .first::<String>(&mut self.0)
-            .optional() 
+            .optional()
     }
 
     pub fn get_token_value(&mut self, user: String, project: String) -> Result<Option<String>, Error> {
         tokens
             .filter(user_id.eq(user))
             .filter(project_id.eq(project))
+            .order(id.desc())
             .select(token)
             .first::<String>(&mut self.0)
             .optional() 
@@ -274,11 +284,12 @@ impl Db {
     
                     match records_result {
                         Ok(record) => {
+                            let token_decrypt = decrypt_data(record.token.clone(), &record.token_name.clone().as_bytes()[..16]); 
                                 for table in &tables {
                                     let site_name = record.bk.split('.').nth(1).expect("Valid app id");
                                     script_lines.push(format!(
                                         "builder$append(server='{}', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
-                                        site_name, record.bk, record.token, table
+                                        site_name, record.bk, token_decrypt, table
                                     ));
                                 }
                             }
@@ -303,30 +314,3 @@ impl Db {
         }
     }
 }    
-
-fn generate_r_script(script_lines: Vec<String>) -> String {
-    let mut builder_script = String::from(
-        r#"library(DSI)
-library(DSOpal)
-library(dsBaseClient)
-set_config(use_proxy(url="http://beam-connect", port=8062))
-set_config( config( ssl_verifyhost = 0L, ssl_verifypeer = 0L ) )
-
-builder <- DSI::newDSLoginBuilder(.silent = FALSE)
-"#,
-    );
-
-    // Append each line to the script.
-    for line in script_lines {
-        builder_script.push_str(&line);
-        builder_script.push('\n');
-    }
-
-    // Finish the script with the login and assignment commands.
-    builder_script.push_str(
-        "logindata <- builder$build()
-connections <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = 'D')\n",
-    );
-
-    builder_script
-}

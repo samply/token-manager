@@ -6,6 +6,8 @@ use crate::config::CONFIG;
 use crate::db::Db;
 use crate::enums::{OpalResponse, OpalProjectTablesResponse, OpalProjectStatus, OpalProjectStatusResponse, OpalTokenStatus, OpalRequestType};
 use crate::models::{NewToken, OpalRequest, TokenParams, TokensQueryParams, ProjectQueryParams};
+use crate::utils::{encrypt_data, decrypt_data};
+use base64::{engine::general_purpose::STANDARD, Engine};
 use anyhow::Result;
 use async_sse::Event;
 use axum::http::StatusCode;
@@ -119,7 +121,7 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
     };
     
     let token_value = match db.get_token_value(token_params.user_id.clone(), token_params.project_id.clone()) {
-        Ok(Some(value)) => value,
+        Ok(Some(value)) => decrypt_data(value, &token_name.clone().as_bytes()[..16]),
         Ok(None) => {
             return Err(anyhow::Error::msg("Token value not found")) 
         },
@@ -135,8 +137,6 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
         Some(token_params.bridgehead_ids.clone()),
         Some(token_value.clone())
     ).await?;
-
-    info!("Refresh token task  {task:#?}");
 
     tokio::task::spawn(update_tokens_from_beam(db, task, token_params, token_name.clone()));
     Ok(OpalResponse::Ok { token: "OK".to_string() })
@@ -290,10 +290,13 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
                 last_error = Some(format!("Error: {error}"));
             },
             OpalResponse::Ok { token } => {
-                let site_name = result.from.as_ref();//.split('.').nth(1).expect("Valid app id");
+                let encryp_token = encrypt_data(&token.clone().as_bytes(), &token_name.clone().as_bytes()[..16]);
+                let token_encoded =  STANDARD.encode(encryp_token); 
+                let site_name = result.from.as_ref();
+
                 let new_token = NewToken {
                     token_name: &token_name,
-                    token: &token,
+                    token: &token_encoded,
                     project_id: &token_params.project_id,
                     bk: &site_name,
                     token_status: OpalTokenStatus::CREATED.as_str(),
@@ -345,10 +348,13 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
                 last_error = Some(format!("Error: {error}"));
             },
             OpalResponse::Ok { token } => {
-                let site_name = result.from.as_ref(); //.split('.').nth(1).expect("Valid app id");
+                let encryp_token = encrypt_data(&token.clone().as_bytes(), &token_name.clone().as_bytes()[..16]);
+                let token_encoded =  STANDARD.encode(encryp_token); 
+                let site_name = result.from.as_ref(); 
+
                 let new_token = NewToken {
                     token_name: &token_name,
-                    token: &token,
+                    token: &token_encoded,
                     project_id: &token_params.project_id,
                     bk: &site_name,
                     token_status: OpalTokenStatus::CREATED.as_str(),

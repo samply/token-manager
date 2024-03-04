@@ -5,6 +5,7 @@ mod models;
 mod routes;
 mod schema;
 mod enums;
+mod utils;
 
 use crate::config::CONFIG;
 use axum::Router;

@@ -23,6 +23,12 @@ libsqlite3-sys = { version = "0.27.0", features = ["bundled"] }
 beam-lib = { git = "https://github.com/samply/beam", branch = "develop", features = ["http-util"] }
 async-sse = "5.1.0"
 futures-util = { version = "0.3", features = ["io"] }
+#encrypt 
+rust-crypto = "^0.2"
+aes = "0.8.4"
+ctr = "0.9.2"
+cipher = "0.4.4"
+base64 = "0.22.0"
 
 # Logging
 tracing = { version = "0.1" }
