@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
 
 use crate::config::BEAM_CLIENT;
@@ -142,7 +142,7 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
     Ok(OpalResponse::Ok { token: "OK".to_string() })
 }
 
-pub async fn fetch_project_tables_names_request(token_params: TokenParams) -> Result<Vec<String>, anyhow::Error> {
+pub async fn fetch_project_tables_names_request(token_params: TokenParams) -> Result<HashMap<String, HashSet<String>>, anyhow::Error> {
     let task = create_and_send_task_request(
         OpalRequestType::SCRIPT,
         Some(token_params.user_id.clone().to_string()),
@@ -413,7 +413,7 @@ async fn status_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectS
     }
 }
 
-async fn fetch_project_tables_from_beam(task: TaskRequest<OpalRequest>) -> Result<Vec<String>, anyhow::Error> {
+async fn fetch_project_tables_from_beam(task: TaskRequest<OpalRequest>) -> Result<HashMap<String, HashSet<String>>, anyhow::Error> {
     let res = BEAM_CLIENT
         .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
         .header(
@@ -429,8 +429,7 @@ async fn fetch_project_tables_from_beam(task: TaskRequest<OpalRequest>) -> Resul
         .into_async_read()
     );
 
-    let mut list_table_names = HashSet::new();
-
+    let mut tables_per_bridgehead: HashMap<String, HashSet<String>> = HashMap::new();
     while let Some(Ok(Event::Message(msg))) =  stream.next().await {
         let result: TaskResult<OpalProjectTablesResponse> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
@@ -447,14 +446,15 @@ async fn fetch_project_tables_from_beam(task: TaskRequest<OpalRequest>) -> Resul
                 continue;
             },
             OpalProjectTablesResponse::Ok { tables } =>{
-                info!("Fetched tables: {:?}", tables);
-                //list_table_names.extend(tables); 
-                list_table_names.extend(tables.into_iter());
+                let bridgehead_tables = tables_per_bridgehead.entry(result.from.as_ref().to_string()).or_insert_with(HashSet::new);
+                for table in tables {
+                    bridgehead_tables.insert(table.clone());
+                }
             } 
         };
     };
     
-    return Ok(list_table_names.into_iter().collect())
+    Ok(tables_per_bridgehead)
 }
 
 async fn remove_project_and_tokens_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectStatusResponse> {
