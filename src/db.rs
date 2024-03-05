@@ -6,6 +6,7 @@ use diesel::result::Error;
 use serde_json::json;
 use anyhow::Result;
 use tracing::{error, info, warn};
+use std::collections::HashSet;
 
 use crate::config::CONFIG;
 use crate::schema::tokens::dsl::*;
@@ -266,11 +267,12 @@ impl Db {
     }
 
     pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {
-        let tables_result = fetch_project_tables_names_request(query.clone()).await;
+        let tables_per_bridgehead_result = fetch_project_tables_names_request(query.clone()).await;
     
-        match tables_result {
-            Ok(tables) => {
+        match tables_per_bridgehead_result {
+            Ok(tables_per_bridgehead) => {
                 let mut script_lines = Vec::new();
+                let all_tables = tables_per_bridgehead.values().flat_map(|tables| tables.iter()).collect::<HashSet<_>>();
     
                 for bridgehead in &query.bridgehead_ids {
 
@@ -285,14 +287,24 @@ impl Db {
                     match records_result {
                         Ok(record) => {
                             let token_decrypt = decrypt_data(record.token.clone(), &record.token_name.clone().as_bytes()[..16]); 
-                                for table in &tables {
+                            if let Some(tables) = tables_per_bridgehead.get(bridgehead) {
+                                let tables_set: HashSet<_> = tables.iter().collect();
+                                let missing_tables: HashSet<_> = all_tables.difference(&tables_set).collect();
+                                if !missing_tables.is_empty() {
+                                    info!("Bridgehead {} is missing tables: {:?}", bridgehead, missing_tables);
+                                    script_lines.push(format!("\n # Tables not available for bridgehead '{}': {:?}", bridgehead, missing_tables));
+                                }
+
+                                for table in tables {
                                     let site_name = record.bk.split('.').nth(1).expect("Valid app id");
                                     script_lines.push(format!(
                                         "builder$append(server='{}', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
-                                        site_name, record.bk, token_decrypt, table
+                                        site_name, record.bk, token_decrypt, table.clone()
                                     ));
                                 }
+                                script_lines.push("".to_string());
                             }
+                        }
                         Err(_) => {
                             info!("No records were found");
                             return Ok("No records found for the given project and user.".into());
