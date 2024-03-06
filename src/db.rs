@@ -168,10 +168,11 @@ impl Db {
             .optional()
     }
 
-    pub fn get_token_value(&mut self, user: String, project: String) -> Result<Option<String>, Error> {
+    pub fn get_token_value(&mut self, user: String, project: String, bridgehead: String) -> Result<Option<String>, Error> {
         tokens
             .filter(user_id.eq(user))
             .filter(project_id.eq(project))
+            .filter(bk.eq(bridgehead))
             .order(id.desc())
             .select(token)
             .first::<String>(&mut self.0)

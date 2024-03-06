@@ -4,7 +4,7 @@ use std::io;
 use crate::config::BEAM_CLIENT;
 use crate::config::CONFIG;
 use crate::db::Db;
-use crate::enums::{OpalResponse, OpalProjectTablesResponse, OpalProjectStatus, OpalProjectStatusResponse, OpalTokenStatus, OpalRequestType};
+use crate::enums::{OpalResponse,  OpalProjectStatus, OpalTokenStatus, OpalRequestType};
 use crate::models::{NewToken, OpalRequest, TokenParams, TokensQueryParams, ProjectQueryParams};
 use crate::utils::{encrypt_data, decrypt_data};
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -22,7 +22,7 @@ use tracing::info;
 use serde_json::json;
 use uuid::Uuid;
 
-pub async fn send_token_registration_request(db: Db, token_params: TokenParams) -> Result<OpalResponse> {
+pub async fn send_token_registration_request(db: Db, token_params: TokenParams) -> Result<OpalResponse<String>, anyhow::Error> {
     let token_name = Uuid::new_v4().to_string();
     let task = create_and_send_task_request(
         OpalRequestType::CREATE,
@@ -35,7 +35,7 @@ pub async fn send_token_registration_request(db: Db, token_params: TokenParams) 
     info!("Created token task {task:#?}");
  
     tokio::task::spawn(save_tokens_from_beam(db, task, token_params, token_name));
-    Ok(OpalResponse::Ok { token: "OK".to_string() })
+    Ok(OpalResponse::Ok { response: "OK".to_string() })
 }
 
 pub async fn send_token_from_db(token_params: TokenParams, token_name: String, token: String){
@@ -46,12 +46,10 @@ pub async fn send_token_from_db(token_params: TokenParams, token_name: String, t
         Some(token_params.bridgehead_ids.clone()),
         Some(token.clone())
     ).await;
-    
     info!("Create token in Opal from DB task: {:?}", task);
-    //Ok(())
 }
 
-pub async fn remove_project_and_tokens_request(mut db: Db, token_params: ProjectQueryParams) -> Result<OpalProjectStatusResponse>  {
+pub async fn remove_project_and_tokens_request(mut db: Db, token_params: ProjectQueryParams) -> Result<OpalResponse<String>, anyhow::Error>  {
     let task = create_and_send_task_request(
         OpalRequestType::DELETE,
         None,
@@ -73,7 +71,7 @@ pub async fn remove_project_and_tokens_request(mut db: Db, token_params: Project
     }
 }
 
-pub async fn remove_tokens_request(mut db: Db, token_params: TokensQueryParams) -> Result<OpalProjectStatusResponse>  {
+pub async fn remove_tokens_request(mut db: Db, token_params: TokensQueryParams) -> Result<OpalResponse<String>, anyhow::Error>  {
     let token_name_result = db.get_token_name(token_params.user_id.clone(), token_params.project_id.clone());
 
     let token_name = match token_name_result {
@@ -108,7 +106,7 @@ pub async fn remove_tokens_request(mut db: Db, token_params: TokensQueryParams) 
     }
 }
 
-pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Result<OpalResponse> {
+pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Result<OpalResponse<String>, anyhow::Error> {
 
     let token_name = match db.get_token_name(token_params.user_id.clone(), token_params.project_id.clone()) {
         Ok(Some(name)) => name,
@@ -120,7 +118,7 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
         }
     };
     
-    let token_value = match db.get_token_value(token_params.user_id.clone(), token_params.project_id.clone()) {
+    let token_value = match db.get_token_value(token_params.user_id.clone(), token_params.project_id.clone(), token_params.bridgehead_ids[0].clone()) {
         Ok(Some(value)) => decrypt_data(value, &token_name.clone().as_bytes()[..16]),
         Ok(None) => {
             return Err(anyhow::Error::msg("Token value not found")) 
@@ -139,7 +137,7 @@ pub async fn refresh_token_request(mut db: Db, token_params: TokenParams) -> Res
     ).await?;
 
     tokio::task::spawn(update_tokens_from_beam(db, task, token_params, token_name.clone()));
-    Ok(OpalResponse::Ok { token: "OK".to_string() })
+    Ok(OpalResponse::Ok { response: "OK".to_string() })
 }
 
 pub async fn fetch_project_tables_names_request(token_params: TokenParams) -> Result<HashMap<String, HashSet<String>>, anyhow::Error> {
@@ -183,13 +181,13 @@ pub async fn check_project_status_request(query_params: ProjectQueryParams) -> R
     };
 
     match project_status_result {
-        Ok(OpalProjectStatusResponse::Ok { status }) => {
-            response_json["project_status"] = json!(status);
+        Ok(OpalResponse::Ok { response }) => {
+            response_json["project_status"] = json!(response);
         },
-        Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
+        Ok(OpalResponse::Err { status_code, error_message }) => {
             let status = StatusCode::from_u16(status_code as u16)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            eprintln!("Project status error: {}, {}", status, error);
+            eprintln!("Project status error: {}, {}", status, error_message);
         },
         Err(e) => {
             eprintln!("Error retrieving project status: {:?}", e);
@@ -225,12 +223,12 @@ pub async fn check_token_status_request(user_id: String, bridgehead: String, pro
     };
 
     match token_status_result {
-        Ok(OpalProjectStatusResponse::Ok { status }) => {
-            response_json["token_status"] = json!(status);
+        Ok(OpalResponse::Ok { response }) => {
+            response_json["token_status"] = json!(response);
 
-            if status == OpalTokenStatus::CREATED.as_str(){
+            if response == OpalTokenStatus::CREATED.as_str(){
                 
-                response_json["token_status"] = json!(status);
+                response_json["token_status"] = json!(response);
 
             }else{
 
@@ -244,10 +242,10 @@ pub async fn check_token_status_request(user_id: String, bridgehead: String, pro
                 response_json["token_status"] = json!(OpalTokenStatus::CREATED.as_str());
             }
         },
-        Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
+        Ok(OpalResponse::Err { status_code, error_message }) => {
             let status = StatusCode::from_u16(status_code as u16)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            eprintln!("Token status error: {}, {}", status, error);
+            eprintln!("Token status error: {}, {}", status, error_message);
         },
         Err(e) => {
             eprintln!("Error retrieving token status: {:?}", e);
@@ -274,7 +272,7 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
     let mut last_error: Option<String> = None;
 
     while let Some(Ok(Event::Message(msg))) = stream.next().await {
-        let result: TaskResult<OpalResponse> = match serde_json::from_slice(msg.data()) {
+        let result: TaskResult<OpalResponse<String>> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
@@ -285,12 +283,12 @@ async fn save_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, token
         };
 
         match result.body {
-            OpalResponse::Err { status_code, error } => {
-                warn!("{} failed to create a token with status code: {status_code}, error: {error}", result.from);
-                last_error = Some(format!("Error: {error}"));
+            OpalResponse::Err { status_code, error_message } => {
+                warn!("{} failed to create a token with status code: {status_code}, error: {error_message}", result.from);
+                last_error = Some(format!("Error: {error_message}"));
             },
-            OpalResponse::Ok { token } => {
-                let encryp_token = encrypt_data(&token.clone().as_bytes(), &token_name.clone().as_bytes()[..16]);
+            OpalResponse::Ok { response } => {
+                let encryp_token = encrypt_data(&response.clone().as_bytes(), &token_name.clone().as_bytes()[..16]);
                 let token_encoded =  STANDARD.encode(encryp_token); 
                 let site_name = result.from.as_ref();
 
@@ -332,7 +330,7 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
     let mut last_error: Option<String> = None;
 
     while let Some(Ok(Event::Message(msg))) = stream.next().await {
-        let result: TaskResult<OpalResponse> = match serde_json::from_slice(msg.data()) {
+        let result: TaskResult<OpalResponse<String>> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
@@ -343,12 +341,12 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
         };
 
         match result.body {
-            OpalResponse::Err { status_code, error } => {
-                warn!("{} failed to create a token with status code: {status_code}, error: {error}", result.from);
-                last_error = Some(format!("Error: {error}"));
+            OpalResponse::Err { status_code, error_message } => {
+                warn!("{} failed to create a token with status code: {status_code}, error: {error_message}", result.from);
+                last_error = Some(format!("Error: {error_message}"));
             },
-            OpalResponse::Ok { token } => {
-                let encryp_token = encrypt_data(&token.clone().as_bytes(), &token_name.clone().as_bytes()[..16]);
+            OpalResponse::Ok { response } => {
+                let encryp_token = encrypt_data(&response.clone().as_bytes(), &token_name.clone().as_bytes()[..16]);
                 let token_encoded =  STANDARD.encode(encryp_token); 
                 let site_name = result.from.as_ref(); 
 
@@ -373,7 +371,7 @@ async fn update_tokens_from_beam(mut db: Db, task: TaskRequest<OpalRequest>, tok
     Ok(())
 }
 
-async fn status_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectStatusResponse> {
+async fn status_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalResponse<String>, anyhow::Error> {
     let res = BEAM_CLIENT
         .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
         .header(header::ACCEPT, HeaderValue::from_static("text/event-stream"))
@@ -386,7 +384,7 @@ async fn status_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectS
     let mut last_error: Option<String> = None;
 
     while let Some(Ok(Event::Message(msg))) = stream.next().await {
-        let result: TaskResult<OpalProjectStatusResponse> = match serde_json::from_slice(msg.data()) {
+        let result: TaskResult<OpalResponse<String>> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
@@ -397,12 +395,12 @@ async fn status_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectS
         };
 
         match result.body {
-            OpalProjectStatusResponse::Err { status_code, error } => {
-                warn!("{} failed to fecth project status code: {status_code}, error: {error}", result.from);
-                return Ok(OpalProjectStatusResponse::Err { status_code, error });
+            OpalResponse::Err { status_code, error_message } => {
+                warn!("{} failed to fecth project status code: {status_code}, error: {error_message}", result.from);
+                return Ok(OpalResponse::Err { status_code, error_message });
             },
-            OpalProjectStatusResponse::Ok { status } => {
-                return Ok(OpalProjectStatusResponse::Ok { status });
+            OpalResponse::Ok { response } => {
+                return Ok(OpalResponse::Ok { response });
             },
         }
     }
@@ -431,7 +429,7 @@ async fn fetch_project_tables_from_beam(task: TaskRequest<OpalRequest>) -> Resul
 
     let mut tables_per_bridgehead: HashMap<String, HashSet<String>> = HashMap::new();
     while let Some(Ok(Event::Message(msg))) =  stream.next().await {
-        let result: TaskResult<OpalProjectTablesResponse> = match serde_json::from_slice(msg.data()) {
+        let result: TaskResult<OpalResponse<Vec<String>>> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
@@ -441,23 +439,23 @@ async fn fetch_project_tables_from_beam(task: TaskRequest<OpalRequest>) -> Resul
         };
         
         match result.body {
-            OpalProjectTablesResponse::Err { error } => {
-                warn!("{} failed to fetch tables: {error}", result.from);
+            OpalResponse::Err { status_code, error_message } => {
+                warn!("status: {} from bk {} failed to fetch tables: {}", status_code, result.from, error_message);
                 continue;
             },
-            OpalProjectTablesResponse::Ok { tables } =>{
+            OpalResponse::Ok { response } =>{
                 let bridgehead_tables = tables_per_bridgehead.entry(result.from.as_ref().to_string()).or_insert_with(HashSet::new);
-                for table in tables {
+                for table in response {
                     bridgehead_tables.insert(table.clone());
                 }
             } 
         };
     };
-    
+
     Ok(tables_per_bridgehead)
 }
 
-async fn remove_project_and_tokens_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectStatusResponse> {
+async fn remove_project_and_tokens_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalResponse<String>, anyhow::Error> {
     let res = BEAM_CLIENT
         .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
         .header(header::ACCEPT, HeaderValue::from_static("text/event-stream"))
@@ -470,7 +468,7 @@ async fn remove_project_and_tokens_from_beam(task: TaskRequest<OpalRequest>) -> 
     let mut last_error: Option<String> = None;
 
     while let Some(Ok(Event::Message(msg))) = stream.next().await {
-        let result: TaskResult<OpalProjectStatusResponse> = match serde_json::from_slice(msg.data()) {
+        let result: TaskResult<OpalResponse<String>> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
@@ -481,12 +479,12 @@ async fn remove_project_and_tokens_from_beam(task: TaskRequest<OpalRequest>) -> 
         };
 
         match result.body {
-            OpalProjectStatusResponse::Err { status_code, error } => {
-                warn!("{} failed to fecth project status code: {status_code}, error: {error}", result.from);
-                return Ok(OpalProjectStatusResponse::Err { status_code, error });
+            OpalResponse::Err { status_code, error_message } => {
+                warn!("{} failed to fecth project status code: {status_code}, error: {error_message}", result.from);
+                return Ok(OpalResponse::Err { status_code, error_message });
             },
-            OpalProjectStatusResponse::Ok { status } => {
-                return Ok(OpalProjectStatusResponse::Ok { status });
+            OpalResponse::Ok { response } => {
+                return Ok(OpalResponse::Ok { response });
             },
         }
     }
@@ -497,7 +495,7 @@ async fn remove_project_and_tokens_from_beam(task: TaskRequest<OpalRequest>) -> 
     }
 }
 
-async fn remove_tokens_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalProjectStatusResponse> {
+async fn remove_tokens_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalResponse<String>, anyhow::Error> {
     let res = BEAM_CLIENT
         .raw_beam_request(Method::GET, &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()))
         .header(header::ACCEPT, HeaderValue::from_static("text/event-stream"))
@@ -510,7 +508,7 @@ async fn remove_tokens_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalP
     let mut last_error: Option<String> = None;
 
     while let Some(Ok(Event::Message(msg))) = stream.next().await {
-        let result: TaskResult<OpalProjectStatusResponse> = match serde_json::from_slice(msg.data()) {
+        let result: TaskResult<OpalResponse<String>> = match serde_json::from_slice(msg.data()) {
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
@@ -521,12 +519,12 @@ async fn remove_tokens_from_beam(task: TaskRequest<OpalRequest>) -> Result<OpalP
         };
 
         match result.body {
-            OpalProjectStatusResponse::Err { status_code, error } => {
-                warn!("{} failed to fecth project status code: {status_code}, error: {error}", result.from);
-                return Ok(OpalProjectStatusResponse::Err { status_code, error });
+            OpalResponse::Err { status_code, error_message } => {
+                warn!("{} failed to fecth project status code: {status_code}, error: {error_message}", result.from);
+                return Ok(OpalResponse::Err { status_code, error_message });
             },
-            OpalProjectStatusResponse::Ok { status } => {
-                return Ok(OpalProjectStatusResponse::Ok { status });
+            OpalResponse::Ok { response } => {
+                return Ok(OpalResponse::Ok { response });
             },
         }
     }
@@ -544,9 +542,6 @@ async fn create_and_send_task_request(
     bridgeheads: Option<Vec<String>>,
     token: Option<String> 
 ) -> Result<TaskRequest<OpalRequest>, anyhow::Error> {
-    //let broker = CONFIG.beam_id.as_ref().splitn(3, '.').nth(2)
-    //    .ok_or_else(|| anyhow::Error::msg("Invalid app id"))?;
-
     let bks: Vec<_> = bridgeheads.unwrap_or_else(Vec::new).iter().map(|bridgehead_id| {AppId::new_unchecked(format!("{}", bridgehead_id))}).collect();
 
     let request = OpalRequest {

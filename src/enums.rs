@@ -2,36 +2,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-pub enum OpalResponse {
+pub enum OpalResponse<T> {
     Err {
-        status_code: i32,
-        error: String,
+        status_code: i32, 
+        error_message: String,
     },
     Ok {
-        token: String,
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum OpalProjectStatusResponse {
-    Err {
-        status_code: i32,
-        error: String,
-    },
-    Ok {
-        status: String,
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum OpalProjectTablesResponse {
-    Err {
-        error: String,
-    },
-    Ok {
-        tables: Vec<String>,
+        response: T, 
     }
 }
 

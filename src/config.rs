@@ -28,6 +28,9 @@ pub struct Config {
 
     #[clap(long, env, default_value = "./file.db ")]
     pub token_manager_db_path: String,
+
+    #[clap(env, default_value = "0123456789abcdef0123456789ABCDEF")]
+    pub token_encrypt_key: String,
 }
 
 pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| BeamClient::new(
