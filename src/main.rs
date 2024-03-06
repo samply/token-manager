@@ -1,10 +1,10 @@
 mod config;
 mod db;
+mod enums;
 mod handlers;
 mod models;
 mod routes;
 mod schema;
-mod enums;
 mod utils;
 
 use crate::config::CONFIG;
