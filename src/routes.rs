@@ -1,6 +1,6 @@
 use crate::db::Db;
 use crate::handlers::{send_token_registration_request, remove_project_and_tokens_request, refresh_token_request, remove_tokens_request, check_project_status_request};
-use crate::enums::{OpalResponse, OpalProjectStatusResponse};
+use crate::enums::OpalResponse;
 use crate::models::{TokenParams, TokensQueryParams, ProjectQueryParams};
 use axum::{
     extract::Query,
@@ -21,9 +21,9 @@ async fn create_token(
         Ok(OpalResponse::Ok { .. }) => {
             StatusCode::OK.into_response()
         },
-        Ok(OpalResponse::Err { status_code, error }) => {
+        Ok(OpalResponse::Err { status_code, error_message }) => {
             let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            (status, Json(json!({ "error": error }))).into_response()
+            (status, Json(json!({ "error": error_message }))).into_response()
         },
         Err(e) => {
             error!("Unhandled error: {e:?}");
@@ -83,9 +83,9 @@ async fn refresh_token(
         Ok(OpalResponse::Ok { .. }) => {
             StatusCode::OK.into_response()
         },
-        Ok(OpalResponse::Err { status_code, error }) => {
+        Ok(OpalResponse::Err { status_code, error_message }) => {
             let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            (status, Json(json!({ "error": error }))).into_response()
+            (status, Json(json!({ "error": error_message }))).into_response()
         },
         Err(e) => {
             error!("Unhandled error: {e:?}");
@@ -98,10 +98,10 @@ async fn remove_project_and_token(db: Db,
     query: Query<ProjectQueryParams>,
     ) -> impl IntoResponse {
     match remove_project_and_tokens_request(db, query.0).await {
-        Ok(OpalProjectStatusResponse::Ok { .. }) =>  StatusCode::OK.into_response(), 
-        Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
+        Ok(OpalResponse::Ok { .. }) =>  StatusCode::OK.into_response(), 
+        Ok(OpalResponse::Err { status_code, error_message }) => {
             let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            (status, Json(json!({ "error": error }))).into_response()
+            (status, Json(json!({ "error": error_message }))).into_response()
         },
         Err(e) => {
             error!("Unhandled error: {e:?}");
@@ -114,10 +114,10 @@ async fn remove_tokens(db: Db,
     query: Query<TokensQueryParams>,
     ) -> impl IntoResponse {
     match remove_tokens_request(db, query.0).await {
-        Ok(OpalProjectStatusResponse::Ok { .. }) =>  StatusCode::OK.into_response(), 
-        Ok(OpalProjectStatusResponse::Err { status_code, error }) => {
+        Ok(OpalResponse::Ok { .. }) =>  StatusCode::OK.into_response(), 
+        Ok(OpalResponse::Err { status_code, error_message }) => {
             let status = StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            (status, Json(json!({ "error": error }))).into_response()
+            (status, Json(json!({ "error": error_message }))).into_response()
         },
         Err(e) => {
             error!("Unhandled error: {e:?}");

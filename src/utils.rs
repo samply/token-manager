@@ -2,12 +2,22 @@ use aes::Aes256;
 use ctr::Ctr128BE; 
 use cipher::{KeyIvInit, StreamCipher};
 use base64::{engine::general_purpose::STANDARD, Engine};
+use crate::config::CONFIG;
 
+
+fn adjust_key(key: &str) -> [u8; 32] {
+    let bytes = key.as_bytes();
+    let mut array = [0u8; 32]; 
+    let bytes_to_copy = bytes.len().min(32);
+    array[..bytes_to_copy].copy_from_slice(&bytes[..bytes_to_copy]);
+
+    array
+}
 
 pub fn encrypt_data(data: &[u8], nonce: &[u8]) -> Vec<u8> {
+    let key: [u8; 32] = adjust_key(&CONFIG.token_encrypt_key);
 
-    let key: &[u8; 32] = b"0123456789abcdef0123456789ABCDEF";     
-    let mut cipher = Ctr128BE::<Aes256>::new_from_slices(key, nonce).unwrap();
+    let mut cipher = Ctr128BE::<Aes256>::new_from_slices(&key, nonce).unwrap();
     let mut encrypted = data.to_vec();
     cipher.apply_keystream(&mut encrypted);
 
