@@ -2,7 +2,7 @@ use beam_lib::{AppId, BeamClient};
 use clap::Parser;
 use once_cell::sync::Lazy;
 use reqwest::Url;
-use std::{net::SocketAddr, convert::Infallible};
+use std::{convert::Infallible, net::SocketAddr};
 
 pub(crate) static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
@@ -33,8 +33,10 @@ pub struct Config {
     pub token_encrypt_key: String,
 }
 
-pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| BeamClient::new(
-    &CONFIG.beam_id,
-    &CONFIG.beam_secret,
-    CONFIG.beam_url.clone()
-));
+pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| {
+    BeamClient::new(
+        &CONFIG.beam_id,
+        &CONFIG.beam_secret,
+        CONFIG.beam_url.clone(),
+    )
+});

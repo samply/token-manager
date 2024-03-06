@@ -60,7 +60,6 @@ pub struct TokenStatus<'a> {
     pub user_id: &'a str,
 }
 
-
 #[derive(Deserialize)]
 pub struct TokensQueryParams {
     pub user_id: String,
