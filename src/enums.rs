@@ -13,6 +13,7 @@ pub enum OpalResponse<T> {
     },
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Deserialize, Serialize)]
 pub enum OpalRequestType {
     #[serde(rename = "CREATE")]
@@ -27,6 +28,7 @@ pub enum OpalRequestType {
     SCRIPT,
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Deserialize, Serialize)]
 pub enum OpalProjectStatus {
     #[serde(rename = "CREATED")]
@@ -37,6 +39,7 @@ pub enum OpalProjectStatus {
     NOTFOUND,
 }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, Deserialize, Serialize)]
 pub enum OpalTokenStatus {
     #[serde(rename = "CREATED")]
