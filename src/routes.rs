@@ -1,64 +1,137 @@
 use crate::db::Db;
-use crate::handlers::send_token_registration_request;
-use crate::models::{ScriptParams, TokenParams};
+use crate::enums::OpalResponse;
+use crate::handlers::{
+    check_project_status_request, refresh_token_request, remove_project_and_tokens_request,
+    remove_tokens_request, send_token_registration_request,
+};
+use crate::models::{ProjectQueryParams, TokenParams, TokensQueryParams};
 use axum::{
-    extract::Path,
+    extract::Query,
     http::StatusCode,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use serde_json::json;
-use tracing::{warn, error};
+use tracing::{error, warn};
 
-
-async fn create_token(
-    db: Db,
-    token_params: Json<TokenParams>,
-) -> StatusCode {
+async fn create_token(db: Db, token_params: Json<TokenParams>) -> impl IntoResponse {
     match send_token_registration_request(db, token_params.0).await {
-        Ok(_) => {
-            StatusCode::OK
+        Ok(OpalResponse::Ok { .. }) => StatusCode::OK.into_response(),
+        Ok(OpalResponse::Err {
+            status_code,
+            error_message,
+        }) => {
+            let status = StatusCode::from_u16(status_code as u16)
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            (status, Json(json!({ "error": error_message }))).into_response()
         }
         Err(e) => {
-            error!("Error creating token task: {e:?}");
-            StatusCode::INTERNAL_SERVER_ERROR
+            error!("Unhandled error: {e:?}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
 }
 
-async fn check_status(mut db: Db, Path(project_id): Path<String>) -> impl IntoResponse {
-    if project_id.is_empty() {
-        let error_response = json!({
-            "status": "error",
-            "message": "Project ID is required"
-        });
-        return (StatusCode::BAD_REQUEST, Json(error_response)).into_response();
-    }
-
-    match db.check_project_status(project_id).await {
+async fn check_project_status(status_query: Query<ProjectQueryParams>) -> impl IntoResponse {
+    match check_project_status_request(status_query.0).await {
         Ok(json) => (StatusCode::OK, json).into_response(),
         Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
     }
 }
 
-async fn generate_script(
+async fn check_token_status(
     mut db: Db,
-    script_params: Json<ScriptParams>,
+    status_query: Query<TokensQueryParams>,
 ) -> impl IntoResponse {
+    match db.check_token_status(status_query.0).await {
+        Ok(json) => (StatusCode::OK, json).into_response(),
+        Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
+    }
+}
+
+async fn check_script_status(mut db: Db, status_params: Json<TokenParams>) -> impl IntoResponse {
+    match db.check_script_status(status_params.0).await {
+        Ok(json) => (StatusCode::OK, json).into_response(),
+        Err((status, message)) => (status, Json(json!({"message": message}))).into_response(),
+    }
+}
+
+async fn generate_script(mut db: Db, script_params: Json<TokenParams>) -> impl IntoResponse {
     match db.generate_user_script(script_params.0).await {
         Ok(script) => (StatusCode::OK, script).into_response(),
         Err(e) => {
             warn!("Error generating script: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        },
+        }
     }
 }
 
-pub fn configure_routes(pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::prelude::SqliteConnection>>) -> Router {
+async fn refresh_token(db: Db, token_params: Json<TokenParams>) -> impl IntoResponse {
+    match refresh_token_request(db, token_params.0).await {
+        Ok(OpalResponse::Ok { .. }) => StatusCode::OK.into_response(),
+        Ok(OpalResponse::Err {
+            status_code,
+            error_message,
+        }) => {
+            let status = StatusCode::from_u16(status_code as u16)
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            (status, Json(json!({ "error": error_message }))).into_response()
+        }
+        Err(e) => {
+            error!("Unhandled error: {e:?}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn remove_project_and_token(db: Db, query: Query<ProjectQueryParams>) -> impl IntoResponse {
+    match remove_project_and_tokens_request(db, query.0).await {
+        Ok(OpalResponse::Ok { .. }) => StatusCode::OK.into_response(),
+        Ok(OpalResponse::Err {
+            status_code,
+            error_message,
+        }) => {
+            let status = StatusCode::from_u16(status_code as u16)
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            (status, Json(json!({ "error": error_message }))).into_response()
+        }
+        Err(e) => {
+            error!("Unhandled error: {e:?}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+async fn remove_tokens(db: Db, query: Query<TokensQueryParams>) -> impl IntoResponse {
+    match remove_tokens_request(db, query.0).await {
+        Ok(OpalResponse::Ok { .. }) => StatusCode::OK.into_response(),
+        Ok(OpalResponse::Err {
+            status_code,
+            error_message,
+        }) => {
+            let status = StatusCode::from_u16(status_code as u16)
+                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+            (status, Json(json!({ "error": error_message }))).into_response()
+        }
+        Err(e) => {
+            error!("Unhandled error: {e:?}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}
+
+pub fn configure_routes(
+    pool: diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::prelude::SqliteConnection>>,
+) -> Router {
     Router::new()
-        .route("/tokens", post(create_token))
-        .route("/projects/:project_id/status", get(check_status))
-        .route("/scripts", get(generate_script))
+        .route("/token", post(create_token))
+        .route("/token", delete(remove_tokens))
+        .route("/token-status", get(check_token_status))
+        .route("/project-status", get(check_project_status))
+        .route("/script", post(generate_script))
+        .route("/refreshToken", put(refresh_token))
+        .route("/project", delete(remove_project_and_token))
+        .route("/authentication-status", post(check_script_status))
         .with_state(pool)
 }

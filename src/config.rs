@@ -2,7 +2,7 @@ use beam_lib::{AppId, BeamClient};
 use clap::Parser;
 use once_cell::sync::Lazy;
 use reqwest::Url;
-use std::{net::SocketAddr, convert::Infallible};
+use std::{convert::Infallible, net::SocketAddr};
 
 pub(crate) static CONFIG: Lazy<Config> = Lazy::new(Config::parse);
 
@@ -12,7 +12,7 @@ pub struct Config {
     pub addr: SocketAddr,
 
     /// Url of the local beam proxy which is required to have sockets enabled
-    #[clap(long, env, default_value = "http://beam-proxy:8081")]
+    #[clap(long, env)]
     pub beam_url: Url,
 
     /// Beam api key
@@ -26,12 +26,17 @@ pub struct Config {
     #[clap(long, env, value_parser=|id: &str| Ok::<_, Infallible>(AppId::new_unchecked(id)))]
     pub beam_id: AppId,
 
-    #[clap(long, env)]
-    pub token_manager_db_url: String,
+    #[clap(long, env, default_value = "./file.db ")]
+    pub token_manager_db_path: String,
+
+    #[clap(env, default_value = "0123456789abcdef0123456789ABCDEF")]
+    pub token_encrypt_key: String,
 }
 
-pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| BeamClient::new(
-    &CONFIG.beam_id,
-    &CONFIG.beam_secret,
-    CONFIG.beam_url.clone()
-));
+pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| {
+    BeamClient::new(
+        &CONFIG.beam_id,
+        &CONFIG.beam_secret,
+        CONFIG.beam_url.clone(),
+    )
+});
