@@ -128,8 +128,8 @@ impl Db {
         }
     }
 
-    pub fn delete_project_db(&mut self, project: String) {
-        let target = tokens.filter(project_id.eq(&project));
+    pub fn delete_project_db(&mut self, project: &str) {
+        let target = tokens.filter(project_id.eq(project));
 
         match diesel::delete(target).execute(&mut self.0) {
             Ok(_) => {
