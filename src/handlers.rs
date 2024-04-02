@@ -25,7 +25,7 @@ use uuid::Uuid;
 pub async fn send_token_registration_request(
     db: Db,
     token_params: TokenParams,
-) -> Result<OpalResponse<String>, anyhow::Error> {
+) -> Result<(), anyhow::Error> {
     let token_name = Uuid::new_v4().to_string();
     let task = create_and_send_task_request(
         OpalRequestType::CREATE,
@@ -39,9 +39,7 @@ pub async fn send_token_registration_request(
     info!("Created token task {task:#?}");
 
     tokio::task::spawn(save_tokens_from_beam(db, task, token_params, token_name));
-    Ok(OpalResponse::Ok {
-        response: "OK".to_string(),
-    })
+    Ok(())
 }
 
 pub async fn send_token_from_db(token_params: TokenParams, token_name: String, token: String) {
@@ -58,7 +56,7 @@ pub async fn send_token_from_db(token_params: TokenParams, token_name: String, t
 
 pub async fn remove_project_and_tokens_request(
     mut db: Db,
-    token_params: ProjectQueryParams,
+    token_params: &ProjectQueryParams,
 ) -> Result<OpalResponse<String>, anyhow::Error> {
     let task = create_and_send_task_request(
         OpalRequestType::DELETE,
@@ -73,7 +71,7 @@ pub async fn remove_project_and_tokens_request(
 
     match remove_project_and_tokens_from_beam(task).await {
         Ok(response) => {
-            db.delete_project_db(token_params.project_id);
+            db.delete_project_db(&token_params.project_id);
             Ok(response)
         }
         Err(e) => Err(e),
@@ -82,7 +80,7 @@ pub async fn remove_project_and_tokens_request(
 
 pub async fn remove_tokens_request(
     mut db: Db,
-    token_params: TokensQueryParams,
+    token_params: &TokensQueryParams,
 ) -> Result<OpalResponse<String>, anyhow::Error> {
     let token_name_result = db.get_token_name(
         token_params.user_id.clone(),
@@ -120,7 +118,7 @@ pub async fn remove_tokens_request(
 pub async fn refresh_token_request(
     mut db: Db,
     token_params: TokenParams,
-) -> Result<OpalResponse<String>, anyhow::Error> {
+) -> Result<(), anyhow::Error> {
     let token_name = match db.get_token_name(
         token_params.user_id.clone(),
         token_params.project_id.clone(),
@@ -159,9 +157,7 @@ pub async fn refresh_token_request(
         token_params,
         token_name.clone(),
     ));
-    Ok(OpalResponse::Ok {
-        response: "OK".to_string(),
-    })
+    Ok(())
 }
 
 pub async fn fetch_project_tables_names_request(

@@ -16,20 +16,11 @@ use serde_json::json;
 use tracing::{error, warn};
 
 async fn create_token(db: Db, token_params: Json<TokenParams>) -> impl IntoResponse {
-    match send_token_registration_request(db, token_params.0).await {
-        Ok(OpalResponse::Ok { .. }) => StatusCode::OK.into_response(),
-        Ok(OpalResponse::Err {
-            status_code,
-            error_message,
-        }) => {
-            let status = StatusCode::from_u16(status_code as u16)
-                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            (status, Json(json!({ "error": error_message }))).into_response()
-        }
-        Err(e) => {
-            error!("Unhandled error: {e:?}");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
+    if let Err(e) = send_token_registration_request(db, token_params.0).await {
+        error!("Unhandled error: {e:?}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    } else {
+        StatusCode::OK
     }
 }
 
@@ -67,31 +58,23 @@ async fn generate_script(mut db: Db, script_params: Json<TokenParams>) -> impl I
     }
 }
 
-async fn refresh_token(db: Db, token_params: Json<TokenParams>) -> impl IntoResponse {
-    match refresh_token_request(db, token_params.0).await {
-        Ok(OpalResponse::Ok { .. }) => StatusCode::OK.into_response(),
-        Ok(OpalResponse::Err {
-            status_code,
-            error_message,
-        }) => {
-            let status = StatusCode::from_u16(status_code as u16)
-                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            (status, Json(json!({ "error": error_message }))).into_response()
-        }
-        Err(e) => {
-            error!("Unhandled error: {e:?}");
-            StatusCode::INTERNAL_SERVER_ERROR.into_response()
-        }
+async fn refresh_token(db: Db, token_params: Json<TokenParams>) -> StatusCode {
+    if let Err(e) = refresh_token_request(db, token_params.0).await {
+        error!("Unhandled error: {e:?}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    } else {
+        StatusCode::OK
     }
 }
 
 async fn remove_project_and_token(db: Db, query: Query<ProjectQueryParams>) -> impl IntoResponse {
-    match remove_project_and_tokens_request(db, query.0).await {
+    match remove_project_and_tokens_request(db, &query.0).await {
         Ok(OpalResponse::Ok { .. }) => StatusCode::OK.into_response(),
         Ok(OpalResponse::Err {
             status_code,
             error_message,
         }) => {
+            warn!(?query, ?error_message, ?status_code, "Got error while project");
             let status = StatusCode::from_u16(status_code as u16)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
             (status, Json(json!({ "error": error_message }))).into_response()
@@ -104,12 +87,13 @@ async fn remove_project_and_token(db: Db, query: Query<ProjectQueryParams>) -> i
 }
 
 async fn remove_tokens(db: Db, query: Query<TokensQueryParams>) -> impl IntoResponse {
-    match remove_tokens_request(db, query.0).await {
+    match remove_tokens_request(db, &query.0).await {
         Ok(OpalResponse::Ok { .. }) => StatusCode::OK.into_response(),
         Ok(OpalResponse::Err {
             status_code,
             error_message,
         }) => {
+            warn!(?query, ?error_message, ?status_code, "Got error while removing tokens");
             let status = StatusCode::from_u16(status_code as u16)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
             (status, Json(json!({ "error": error_message }))).into_response()
