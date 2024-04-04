@@ -174,8 +174,7 @@ pub async fn fetch_project_tables_names_request(
 
     info!("Fetch Project Tables Status  {task:#?}");
 
-    let handle = tokio::task::spawn(fetch_project_tables_from_beam(task));
-    handle.await?
+    fetch_project_tables_from_beam(task).await
 }
 
 pub async fn check_project_status_request(
@@ -534,7 +533,7 @@ async fn fetch_project_tables_from_beam(
     let res = BEAM_CLIENT
         .raw_beam_request(
             Method::GET,
-            &format!("/v1/tasks/{}/results?wait_count={}", task.id, task.to.len()),
+            &format!("/v1/tasks/{}/results?wait_count={}&wait_time=30s", task.id, task.to.len()),
         )
         .header(
             header::ACCEPT,
