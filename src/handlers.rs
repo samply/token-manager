@@ -18,7 +18,7 @@ use futures_util::stream::TryStreamExt;
 use futures_util::StreamExt;
 use reqwest::{header, Method};
 use serde_json::json;
-use tracing::info;
+use tracing::{debug, info};
 use tracing::warn;
 use uuid::Uuid;
 
@@ -36,7 +36,7 @@ pub async fn send_token_registration_request(
     )
     .await?;
 
-    info!("Created token task {task:#?}");
+    debug!("Created token task {task:#?}");
 
     tokio::task::spawn(save_tokens_from_beam(db, task, token_params, token_name));
     Ok(())
@@ -51,7 +51,7 @@ pub async fn send_token_from_db(token_params: TokenParams, token_name: String, t
         Some(token.clone()),
     )
     .await;
-    info!("Create token in Opal from DB task: {:?}", task);
+    debug!("Create token in Opal from DB task: {:?}", task);
 }
 
 pub async fn remove_project_and_tokens_request(
@@ -67,7 +67,7 @@ pub async fn remove_project_and_tokens_request(
     )
     .await?;
 
-    info!("Remove Project and Token request {task:#?}");
+    debug!("Remove Project and Token request {task:#?}");
 
     match remove_project_and_tokens_from_beam(task).await {
         Ok(response) => {
@@ -104,7 +104,7 @@ pub async fn remove_tokens_request(
     )
     .await?;
 
-    info!("Remove Tokens request {task:#?}");
+    debug!("Remove Tokens request {task:#?}");
 
     match remove_tokens_from_beam(task).await {
         Ok(response) => {
@@ -172,7 +172,7 @@ pub async fn fetch_project_tables_names_request(
     )
     .await?;
 
-    info!("Fetch Project Tables Status  {task:#?}");
+    debug!("Fetch Project Tables Status  {task:#?}");
 
     fetch_project_tables_from_beam(task).await
 }
@@ -204,11 +204,10 @@ pub async fn check_project_status_request(
         }
     };
 
-    info!("Check Project Status  {task:#?}");
+    debug!("Check Project Status  {task:#?}");
 
     let project_status_result = match status_from_beam(task).await {
         Ok(response) => {
-            info!("Project Status response {response:#?}");
             Ok(response)
         }
         Err(e) => Err(e),
@@ -216,6 +215,7 @@ pub async fn check_project_status_request(
 
     match project_status_result {
         Ok(OpalResponse::Ok { response }) => {
+            info!("Project Status response: {}", json!(response));
             response_json["project_status"] = json!(response);
         }
         Ok(OpalResponse::Err {
@@ -266,11 +266,11 @@ pub async fn check_token_status_request(
         }
     };
 
-    info!("Check Token Status  {task:#?}");
+    debug!("Check Token Status  {task:#?}");
 
     let token_status_result = match status_from_beam(task).await {
         Ok(response) => {
-            info!("Token Status response {response:#?}");
+            debug!("Token Status response {response:#?}");
             Ok(response)
         }
         Err(e) => Err(e),
