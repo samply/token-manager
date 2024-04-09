@@ -345,14 +345,17 @@ impl Db {
                             }
                         }
                         Err(_) => {
-                            info!("No records were found");
-                            return Ok("No records found for the given project and user.".into());
+                            info!("Token not available for Bridgehead {}", bridgehead);
+                                script_lines.push(format!(
+                                    "\n # Token not available for bridgehead '{}'",
+                                    bridgehead
+                                ));
                         }
                     }
                 }
 
                 if !script_lines.is_empty() {
-                    let script = generate_r_script(script_lines); // Assuming this function exists and works as intended
+                    let script = generate_r_script(script_lines);
                     Ok(script)
                 } else {
                     Ok("No records found for the given project and user.".into())
