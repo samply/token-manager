@@ -18,26 +18,29 @@ use futures_util::stream::TryStreamExt;
 use futures_util::StreamExt;
 use reqwest::{header, Method};
 use serde_json::json;
-use tracing::{debug, info};
 use tracing::warn;
+use tracing::{debug, info};
 use uuid::Uuid;
 
 pub async fn send_token_registration_request(
-    db: Db,
+    mut db: Db,
     token_params: TokenParams,
 ) -> Result<(), anyhow::Error> {
+    if db.is_token_available(token_params.clone())? {
+        return Ok(());
+    }
+
     let token_name = Uuid::new_v4().to_string();
     let task = create_and_send_task_request(
         OpalRequestType::CREATE,
         Some(token_name.clone()),
-        Some(token_params.project_id.to_string()),
+        Some(token_params.project_id.clone().to_string()),
         Some(token_params.bridgehead_ids.clone()),
         None,
     )
     .await?;
 
     debug!("Created token task {task:#?}");
-
     tokio::task::spawn(save_tokens_from_beam(db, task, token_params, token_name));
     Ok(())
 }
@@ -82,12 +85,7 @@ pub async fn remove_tokens_request(
     mut db: Db,
     token_params: &TokensQueryParams,
 ) -> Result<OpalResponse<String>, anyhow::Error> {
-    let token_name_result = db.get_token_name(
-        token_params.user_id.clone(),
-        token_params.project_id.clone(),
-    );
-
-    let token_name = match token_name_result {
+    let token_name = match db.get_token_name(&token_params) {
         Ok(Some(name)) => name,
         Ok(None) => return Err(anyhow::Error::msg("Token not found")),
         Err(e) => {
@@ -119,10 +117,12 @@ pub async fn refresh_token_request(
     mut db: Db,
     token_params: TokenParams,
 ) -> Result<(), anyhow::Error> {
-    let token_name = match db.get_token_name(
-        token_params.user_id.clone(),
-        token_params.project_id.clone(),
-    ) {
+    let token_query_params: TokensQueryParams = TokensQueryParams {
+        user_id: token_params.user_id.clone(),
+        bk: token_params.bridgehead_ids[0].clone(),
+        project_id: token_params.project_id.clone(),
+    };
+    let token_name = match db.get_token_name(&token_query_params) {
         Ok(Some(name)) => name,
         Ok(None) => return Err(anyhow::Error::msg("Token name not found")),
         Err(e) => {
@@ -207,9 +207,7 @@ pub async fn check_project_status_request(
     debug!("Check Project Status  {task:#?}");
 
     let project_status_result = match status_from_beam(task).await {
-        Ok(response) => {
-            Ok(response)
-        }
+        Ok(response) => Ok(response),
         Err(e) => Err(e),
     };
 
@@ -533,7 +531,11 @@ async fn fetch_project_tables_from_beam(
     let res = BEAM_CLIENT
         .raw_beam_request(
             Method::GET,
-            &format!("/v1/tasks/{}/results?wait_count={}&wait_time=30s", task.id, task.to.len()),
+            &format!(
+                "/v1/tasks/{}/results?wait_count={}&wait_time=30s",
+                task.id,
+                task.to.len()
+            ),
         )
         .header(
             header::ACCEPT,
