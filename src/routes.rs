@@ -74,7 +74,12 @@ async fn remove_project_and_token(db: Db, query: Query<ProjectQueryParams>) -> i
             status_code,
             error_message,
         }) => {
-            warn!(?query, ?error_message, ?status_code, "Got error while project");
+            warn!(
+                ?query,
+                ?error_message,
+                ?status_code,
+                "Got error while project"
+            );
             let status = StatusCode::from_u16(status_code as u16)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
             (status, Json(json!({ "error": error_message }))).into_response()
@@ -93,7 +98,12 @@ async fn remove_tokens(db: Db, query: Query<TokensQueryParams>) -> impl IntoResp
             status_code,
             error_message,
         }) => {
-            warn!(?query, ?error_message, ?status_code, "Got error while removing tokens");
+            warn!(
+                ?query,
+                ?error_message,
+                ?status_code,
+                "Got error while removing tokens"
+            );
             let status = StatusCode::from_u16(status_code as u16)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
             (status, Json(json!({ "error": error_message }))).into_response()

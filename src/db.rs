@@ -156,12 +156,12 @@ impl Db {
 
     pub fn get_token_name(
         &mut self,
-        user: String,
-        project: String,
+        token_params: &TokensQueryParams,
     ) -> Result<Option<String>, Error> {
         tokens
-            .filter(user_id.eq(user))
-            .filter(project_id.eq(project))
+            .filter(user_id.eq(token_params.user_id.clone()))
+            .filter(project_id.eq(token_params.project_id.clone()))
+            .filter(bk.eq(token_params.bk.clone()))
             .order(id.desc())
             .select(token_name)
             .first::<String>(&mut self.0)
@@ -184,7 +184,7 @@ impl Db {
             .optional()
     }
 
-    pub fn is_any_token_available(&mut self, params: TokenParams) -> Result<bool, Error> {
+    pub fn is_token_available(&mut self, params: TokenParams) -> Result<bool, Error> {
         let result = tokens
             .filter(user_id.eq(params.user_id))
             .filter(project_id.eq(params.project_id))
@@ -203,7 +203,7 @@ impl Db {
         &mut self,
         params: TokenParams,
     ) -> Result<String, (StatusCode, String)> {
-        let token_available = self.is_any_token_available(params);
+        let token_available = self.is_token_available(params);
 
         match token_available {
             Ok(true) => Ok("true".to_string()),
@@ -239,12 +239,11 @@ impl Db {
             error!("Error retrieving project status");
         }
 
-        let token_name_response =
-            match self.get_token_name(params.user_id.clone(), params.project_id.clone()) {
-                Ok(Some(name)) => name,
-                Ok(None) => return Ok(Json(token_status_json)),
-                Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
-            };
+        let token_name_response = match self.get_token_name(&params) {
+            Ok(Some(name)) => name,
+            Ok(None) => return Ok(Json(token_status_json)),
+            Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
+        };
 
         let records = match tokens
             .filter(user_id.eq(&params.user_id))
@@ -346,10 +345,10 @@ impl Db {
                         }
                         Err(_) => {
                             info!("Token not available for Bridgehead {}", bridgehead);
-                                script_lines.push(format!(
-                                    "\n # Token not available for bridgehead '{}'",
-                                    bridgehead
-                                ));
+                            script_lines.push(format!(
+                                "\n # Token not available for bridgehead '{}'",
+                                bridgehead
+                            ));
                         }
                     }
                 }
