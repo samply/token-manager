@@ -74,7 +74,7 @@ pub async fn remove_project_and_tokens_request(
 
     match remove_project_and_tokens_from_beam(task).await {
         Ok(response) => {
-            db.delete_project_db(&token_params.project_id);
+            db.delete_project_db(&token_params);
             Ok(response)
         }
         Err(e) => Err(e),

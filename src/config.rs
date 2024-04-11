@@ -31,6 +31,9 @@ pub struct Config {
 
     #[clap(env, default_value = "0123456789abcdef0123456789ABCDEF")]
     pub token_encrypt_key: String,
+
+    #[clap(long, env, default_value = "info")]
+    pub rust_log: String,
 }
 
 pub static BEAM_CLIENT: Lazy<BeamClient> = Lazy::new(|| {
