@@ -65,7 +65,7 @@ impl Db {
             .execute(&mut self.0)
         {
             Ok(_) => {
-                info!("New Token Saved in DB");
+                info!("Token Saved in DB for user: {} in BK: {}", new_token.user_id, new_token.bk);
             }
             Err(error) => {
                 warn!("Error connecting to {}", error);
@@ -141,12 +141,12 @@ impl Db {
         }
     }
 
-    pub fn delete_token_db(&mut self, name: String) {
-        let target = tokens.filter(token_name.eq(&name));
+    pub fn delete_token_db(&mut self, token_name_id: String, token_params: &TokensQueryParams) {
+        let target = tokens.filter(token_name.eq(&token_name_id));
 
         match diesel::delete(target).execute(&mut self.0) {
             Ok(_) => {
-                info!("Tokens deleted from DB");
+                info!("Token deleted from DB for user: {} in BK: {}", token_params.user_id, token_params.bk);
             }
             Err(error) => {
                 warn!("Error deleting token: {}", error);
@@ -184,11 +184,11 @@ impl Db {
             .optional()
     }
 
-    pub fn is_token_available(&mut self, params: TokenParams) -> Result<bool, Error> {
+    pub fn is_token_available(&mut self, params: &TokenParams) -> Result<bool, Error> {
         let result = tokens
-            .filter(user_id.eq(params.user_id))
-            .filter(project_id.eq(params.project_id))
-            .filter(bk.eq_any(params.bridgehead_ids))
+            .filter(user_id.eq(&params.user_id))
+            .filter(project_id.eq(&params.project_id))
+            .filter(bk.eq_any(&params.bridgehead_ids))
             .first::<TokenManager>(&mut self.0)
             .optional();
 
@@ -203,11 +203,17 @@ impl Db {
         &mut self,
         params: TokenParams,
     ) -> Result<String, (StatusCode, String)> {
-        let token_available = self.is_token_available(params);
+        let token_available = self.is_token_available(&params);
 
         match token_available {
-            Ok(true) => Ok("true".to_string()),
-            Ok(false) => Ok("false".to_string()),
+            Ok(true) => {
+                info!("Token available for user: {}", params.user_id);
+                Ok("true".to_string())
+            },
+            Ok(false) => {
+                info!("No Token available for user: {}", params.user_id);
+                Ok("false".to_string())
+            },
             Err(_) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Error checking token availability.".to_string(),

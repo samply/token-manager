@@ -19,14 +19,14 @@ use futures_util::StreamExt;
 use reqwest::{header, Method};
 use serde_json::json;
 use tracing::warn;
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 use uuid::Uuid;
 
 pub async fn send_token_registration_request(
     mut db: Db,
     token_params: TokenParams,
 ) -> Result<(), anyhow::Error> {
-    if db.is_token_available(token_params.clone())? {
+    if db.is_token_available(&token_params)? {
         return Ok(());
     }
 
@@ -106,7 +106,7 @@ pub async fn remove_tokens_request(
 
     match remove_tokens_from_beam(task).await {
         Ok(response) => {
-            db.delete_token_db(token_name);
+            db.delete_token_db(token_name, &token_params);
             Ok(response)
         }
         Err(e) => Err(e),
@@ -213,7 +213,12 @@ pub async fn check_project_status_request(
 
     match project_status_result {
         Ok(OpalResponse::Ok { response }) => {
-            info!("Project Status response: {}", json!(response));
+            info!(
+                "Received status response for project. Project ID: {}, BK: {}, Response: {}",
+                query_params.project_id,
+                query_params.bk,
+                json!(response).to_string()
+            );
             response_json["project_status"] = json!(response);
         }
         Ok(OpalResponse::Err {
@@ -222,10 +227,14 @@ pub async fn check_project_status_request(
         }) => {
             let status = StatusCode::from_u16(status_code as u16)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            eprintln!("Project status error: {}, {}", status, error_message);
+            warn!("Received status response for project. Project ID: {}, BK: {}, Status: {}, Response: {}", 
+            query_params.project_id,
+            query_params.bk, 
+            status, 
+            error_message);
         }
         Err(e) => {
-            eprintln!("Error retrieving project status: {:?}", e);
+            error!("Error retrieving project status: {:?}", e);
             return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
         }
     };
