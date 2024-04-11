@@ -74,7 +74,6 @@ impl Db {
     }
 
     pub fn update_token_db(&mut self, token_update: NewToken) {
-        // Attempt to find the `id` of the last record matching the criteria
         let maybe_last_id = tokens
             .filter(
                 user_id
@@ -84,11 +83,10 @@ impl Db {
             )
             .select(id)
             .order(id.desc())
-            .first::<i32>(&mut self.0) // Assuming `id` is of type `i32`
-            .optional(); // Use `.optional()` to handle cases where no records are found
+            .first::<i32>(&mut self.0)
+            .optional(); 
 
         if let Ok(Some(last_id)) = maybe_last_id {
-            // If a last record is found, perform the update
             let target = tokens.filter(id.eq(last_id));
             match diesel::update(target)
                 .set((
@@ -98,11 +96,10 @@ impl Db {
                 ))
                 .execute(&mut self.0)
             {
-                Ok(_) => info!("Token updated in DB"),
+                Ok(_) => info!("Token Updated in DB for user: {} in BK: {}", token_update.user_id, token_update.bk),
                 Err(error) => warn!("Error updating token: {}", error),
             }
         } else if let Err(error) = maybe_last_id {
-            // Handle potential errors from the `first` query
             warn!("Error finding last token record: {}", error);
         }
     }
@@ -120,7 +117,7 @@ impl Db {
             .execute(&mut self.0)
         {
             Ok(_) => {
-                info!("Token status updated in DB");
+                info!("Token status updated in DB for user: {} in BK: {}", token_update.user_id, token_update.bk);
             }
             Err(error) => {
                 warn!("Error updating token status: {}", error);
@@ -128,12 +125,12 @@ impl Db {
         }
     }
 
-    pub fn delete_project_db(&mut self, project: &str) {
-        let target = tokens.filter(project_id.eq(project));
+    pub fn delete_project_db(&mut self, project_params: &ProjectQueryParams,) {
+        let target = tokens.filter(project_id.eq(&project_params.project_id));
 
         match diesel::delete(target).execute(&mut self.0) {
             Ok(_) => {
-                info!("Project and Tokens deleted from DB");
+                info!("Project and Token deleted from DB for project: {} in BK: {}", &project_params.project_id, &project_params.bk);
             }
             Err(error) => {
                 warn!("Error deleting token: {}", error);
@@ -247,7 +244,15 @@ impl Db {
 
         let token_name_response = match self.get_token_name(&params) {
             Ok(Some(name)) => name,
-            Ok(None) => return Ok(Json(token_status_json)),
+            Ok(None) =>{ 
+                info!(
+                    "Received status response for token. User ID: {}, BK: {}, Response: {}",
+                    params.user_id,
+                    params.bk,
+                    token_status_json["token_status"]
+                );
+                return Ok(Json(token_status_json))
+            },
             Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
         };
 
@@ -260,7 +265,12 @@ impl Db {
         {
             Ok(records) if !records.is_empty() => records,
             Ok(_) => {
-                info!("Token not found with user_id: {}", &params.user_id);
+                info!(
+                    "Received status response for token. User ID: {}, BK: {}, Response: {}",
+                    params.user_id,
+                    params.bk,
+                    token_status_json["token_status"]
+                );
                 return Ok(Json(token_status_json));
             }
             Err(err) => {
@@ -294,6 +304,14 @@ impl Db {
         } else {
             error!("Error retrieving token status");
         }
+
+        info!(
+            "Received status response for token. User ID: {}, BK: {}, Response: {}",
+            params.user_id,
+            params.bk,
+            token_status_json["token_status"]
+        );
+
         Ok(Json(token_status_json))
     }
 

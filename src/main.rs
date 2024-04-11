@@ -15,10 +15,14 @@ use tracing_subscriber::{fmt::SubscriberBuilder, EnvFilter};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let env_filter = EnvFilter::from_default_env().add_directive(Level::INFO.into());
+    let env_filter = EnvFilter::try_new(&CONFIG.rust_log)
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
+
     let subscriber = SubscriberBuilder::default()
         .with_env_filter(env_filter)
         .finish();
+
     tracing::subscriber::set_global_default(subscriber)?;
 
     info!("Starting server token ON!");
