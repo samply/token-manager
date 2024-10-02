@@ -10,7 +10,8 @@ mod utils;
 use crate::config::CONFIG;
 use axum::Router;
 use routes::configure_routes;
-use tracing::{info, Level};
+use tokio::net::TcpListener;
+use tracing::info;
 use tracing_subscriber::{fmt::SubscriberBuilder, EnvFilter};
 
 #[tokio::main]
@@ -28,8 +29,10 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting server token ON!");
     let app = Router::new().nest("/api", configure_routes(db::setup_db()?));
 
-    axum::Server::bind(&CONFIG.addr)
-        .serve(app.into_make_service())
-        .await?;
-    Ok(())
+    axum::serve(TcpListener::bind(&CONFIG.addr).await?, app.into_make_service())
+        .with_graceful_shutdown(async {
+            tokio::signal::ctrl_c().await.unwrap();
+        })
+        .await
+        .map_err(Into::into)
 }
