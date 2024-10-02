@@ -7,9 +7,9 @@ license = "Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axum = "0.6"
-tokio = { version = "1.33.0", features = ["full", "macros"] }
-reqwest = { version = "0.11", default_features = false, features = ["json", "default-tls", "stream"] }
+axum = "0.7"
+tokio = { version = "1", features = ["full", "macros"] }
+reqwest = { version = "0.12", default_features = false, features = ["json", "default-tls", "stream"] }
 serde_json = "1.0"
 serde = { version = "1", features = ["derive"] }
 anyhow = { version = "1.0", default-features = false }
@@ -18,7 +18,7 @@ uuid = { version = "1.7.0", features = ["v4"] }
 # Db
 diesel = { version = "2.1.4", features = ["sqlite", "r2d2"] }
 diesel_migrations = { version = "2.1.0", features = ["sqlite"] }
-libsqlite3-sys = { version = "0.28", features = ["bundled"] }
+libsqlite3-sys = { version = "0.30", features = ["bundled"] }
 # Beam
 beam-lib = { git = "https://github.com/samply/beam", branch = "develop", features = ["http-util"] }
 async-sse = "5.1.0"
@@ -27,7 +27,7 @@ futures-util = { version = "0.3", features = ["io"] }
 aes = "0.8"
 ctr = "0.9"
 cipher = "0.4"
-base64 = "0.21"
+base64 = "0.22"
 
 # Logging
 tracing = { version = "0.1" }
