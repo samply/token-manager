@@ -197,10 +197,13 @@ pub async fn check_project_status_request(
     {
         Ok(result) => result,
         Err(e) => {
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Error creating task: {}", e),
-            ))
+            warn!(
+                "Received error response for project status request: Project ID: {}, BK: {}. Reason: BK value not found or unavailable. Error details: {:?}",
+                query_params.project_id,
+                query_params.bk,
+                e
+            );
+            return Ok(Json(response_json))
         }
     };
 
