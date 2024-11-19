@@ -237,8 +237,9 @@ pub async fn check_project_status_request(
             error_message);
         }
         Err(e) => {
-            error!("Error retrieving project status: {:?}", e);
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()));
+            info!("Bridgehead: {}, Error retrieving project status: Failed to deserialize message", query_params.bk);
+            debug!("Error retrieving project status: {:?}", e);
+            response_json["project_status"] = json!(OpalProjectStatus::ERROR);
         }
     };
 
