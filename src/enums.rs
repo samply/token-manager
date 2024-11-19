@@ -37,6 +37,8 @@ pub enum OpalProjectStatus {
     WITHDATA,
     #[serde(rename = "NOT_FOUND")]
     NOTFOUND,
+    #[serde(rename = "ERROR")]
+    ERROR
 }
 
 #[allow(clippy::upper_case_acronyms)]
@@ -48,6 +50,8 @@ pub enum OpalTokenStatus {
     EXPIRED,
     #[serde(rename = "NOT_FOUND")]
     NOTFOUND,
+    #[serde(rename = "ERROR")]
+    ERROR
 }
 
 impl OpalProjectStatus {
@@ -56,6 +60,7 @@ impl OpalProjectStatus {
             OpalProjectStatus::CREATED => "CREATED",
             OpalProjectStatus::WITHDATA => "WITH_DATA",
             OpalProjectStatus::NOTFOUND => "NOT_FOUND",
+            OpalProjectStatus::ERROR => "ERROR"
         }
     }
 }
@@ -66,6 +71,7 @@ impl OpalTokenStatus {
             OpalTokenStatus::CREATED => "CREATED",
             OpalTokenStatus::EXPIRED => "EXPIRED",
             OpalTokenStatus::NOTFOUND => "NOT_FOUND",
+            OpalTokenStatus::ERROR => "ERROR"
         }
     }
 }
