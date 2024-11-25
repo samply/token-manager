@@ -13,11 +13,11 @@ use axum::{
     Json, Router,
 };
 use serde_json::json;
-use tracing::{error, warn};
+use tracing::debug;
 
 async fn create_token(db: Db, token_params: Json<TokenParams>) -> impl IntoResponse {
     if let Err(e) = send_token_registration_request(db, token_params.0).await {
-        error!("Unhandled error: {e:?}");
+        debug!("Unhandled error: {e:?}");
         StatusCode::INTERNAL_SERVER_ERROR
     } else {
         StatusCode::OK
@@ -52,7 +52,7 @@ async fn generate_script(mut db: Db, script_params: Json<TokenParams>) -> impl I
     match db.generate_user_script(script_params.0).await {
         Ok(script) => (StatusCode::OK, script).into_response(),
         Err(e) => {
-            warn!("Error generating script: {e}");
+            debug!("Error generating script: {e}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
@@ -60,7 +60,7 @@ async fn generate_script(mut db: Db, script_params: Json<TokenParams>) -> impl I
 
 async fn refresh_token(db: Db, token_params: Json<TokenParams>) -> StatusCode {
     if let Err(e) = refresh_token_request(db, token_params.0).await {
-        error!("Unhandled error: {e:?}");
+        debug!("Unhandled error: {e:?}");
         StatusCode::INTERNAL_SERVER_ERROR
     } else {
         StatusCode::OK
@@ -74,7 +74,7 @@ async fn remove_project_and_token(db: Db, query: Query<ProjectQueryParams>) -> i
             status_code,
             error_message,
         }) => {
-            warn!(
+            debug!(
                 ?query,
                 ?error_message,
                 ?status_code,
@@ -85,7 +85,7 @@ async fn remove_project_and_token(db: Db, query: Query<ProjectQueryParams>) -> i
             (status, Json(json!({ "error": error_message }))).into_response()
         }
         Err(e) => {
-            error!("Unhandled error: {e:?}");
+            debug!("Unhandled error: {e:?}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
@@ -98,7 +98,7 @@ async fn remove_tokens(db: Db, query: Query<TokensQueryParams>) -> impl IntoResp
             status_code,
             error_message,
         }) => {
-            warn!(
+            debug!(
                 ?query,
                 ?error_message,
                 ?status_code,
@@ -109,7 +109,7 @@ async fn remove_tokens(db: Db, query: Query<TokensQueryParams>) -> impl IntoResp
             (status, Json(json!({ "error": error_message }))).into_response()
         }
         Err(e) => {
-            error!("Unhandled error: {e:?}");
+            debug!("Unhandled error: {e:?}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }

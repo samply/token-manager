@@ -19,7 +19,7 @@ use futures_util::StreamExt;
 use reqwest::{header, Method};
 use serde_json::json;
 use tracing::warn;
-use tracing::{debug, info, error};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 pub async fn send_token_registration_request(
@@ -230,7 +230,7 @@ pub async fn check_project_status_request(
         }) => {
             let status = StatusCode::from_u16(status_code as u16)
                 .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-            warn!("Received status response for project. Project ID: {}, BK: {}, Status: {}, Response: {}", 
+            debug!("Received status response for project. Project ID: {}, BK: {}, Status: {}, Response: {}", 
             query_params.project_id,
             query_params.bk, 
             status, 
@@ -356,7 +356,7 @@ async fn save_tokens_from_beam(
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
-                warn!("{error_msg}");
+                debug!("{error_msg}");
                 last_error = Some(error_msg);
                 continue;
             }
@@ -434,7 +434,7 @@ async fn update_tokens_from_beam(
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
-                warn!("{error_msg}");
+                debug!("{error_msg}");
                 last_error = Some(error_msg);
                 continue;
             }
@@ -506,7 +506,7 @@ async fn status_from_beam(
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
-                warn!("{error_msg}");
+                debug!("{error_msg}");
                 last_error = Some(error_msg);
                 continue;
             }
@@ -570,7 +570,7 @@ async fn fetch_project_tables_from_beam(
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
-                warn!("{error_msg}");
+                debug!("{error_msg}");
                 continue;
             }
         };
@@ -629,7 +629,7 @@ async fn remove_project_and_tokens_from_beam(
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
-                warn!("{error_msg}");
+                debug!("{error_msg}");
                 last_error = Some(error_msg);
                 continue;
             }
@@ -690,7 +690,7 @@ async fn remove_tokens_from_beam(
             Ok(v) => v,
             Err(e) => {
                 let error_msg = format!("Failed to deserialize message {msg:?} into a result: {e}");
-                warn!("{error_msg}");
+                debug!("{error_msg}");
                 last_error = Some(error_msg);
                 continue;
             }
