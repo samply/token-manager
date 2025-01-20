@@ -18,7 +18,7 @@ uuid = { version = "1.7.0", features = ["v4"] }
 # Db
 diesel = { version = "2.1.4", features = ["sqlite", "r2d2"] }
 diesel_migrations = { version = "2.1.0", features = ["sqlite"] }
-libsqlite3-sys = { version = "0.30", features = ["bundled"] }
+libsqlite3-sys = { version = "0.31", features = ["bundled"] }
 # Beam
 beam-lib = { git = "https://github.com/samply/beam", branch = "develop", features = ["http-util"] }
 async-sse = "5.1.0"
