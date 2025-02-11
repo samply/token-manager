@@ -10,7 +10,7 @@ use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::result::Error;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use serde_json::json;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use tracing::{error, info, warn};
 
 use crate::config::CONFIG;
@@ -23,7 +23,7 @@ use crate::models::{
 };
 use crate::schema::tokens;
 use crate::schema::tokens::dsl::*;
-use crate::utils::{decrypt_data, generate_r_script};
+use crate::utils::{decrypt_data, fetch_tables_prefix, generate_r_script};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
@@ -65,7 +65,10 @@ impl Db {
             .execute(&mut self.0)
         {
             Ok(_) => {
-                info!("Token Saved in DB for user: {} in BK: {}", new_token.user_id, new_token.bk);
+                info!(
+                    "Token Saved in DB for user: {} in BK: {}",
+                    new_token.user_id, new_token.bk
+                );
             }
             Err(error) => {
                 warn!("Error connecting to {}", error);
@@ -84,7 +87,7 @@ impl Db {
             .select(id)
             .order(id.desc())
             .first::<i32>(&mut self.0)
-            .optional(); 
+            .optional();
 
         if let Ok(Some(last_id)) = maybe_last_id {
             let target = tokens.filter(id.eq(last_id));
@@ -96,7 +99,10 @@ impl Db {
                 ))
                 .execute(&mut self.0)
             {
-                Ok(_) => info!("Token Updated in DB for user: {} in BK: {}", token_update.user_id, token_update.bk),
+                Ok(_) => info!(
+                    "Token Updated in DB for user: {} in BK: {}",
+                    token_update.user_id, token_update.bk
+                ),
                 Err(error) => warn!("Error updating token: {}", error),
             }
         } else if let Err(error) = maybe_last_id {
@@ -117,7 +123,10 @@ impl Db {
             .execute(&mut self.0)
         {
             Ok(_) => {
-                info!("Token status updated in DB for user: {} in BK: {}", token_update.user_id, token_update.bk);
+                info!(
+                    "Token status updated in DB for user: {} in BK: {}",
+                    token_update.user_id, token_update.bk
+                );
             }
             Err(error) => {
                 warn!("Error updating token status: {}", error);
@@ -125,12 +134,15 @@ impl Db {
         }
     }
 
-    pub fn delete_project_db(&mut self, project_params: &ProjectQueryParams,) {
+    pub fn delete_project_db(&mut self, project_params: &ProjectQueryParams) {
         let target = tokens.filter(project_id.eq(&project_params.project_id));
 
         match diesel::delete(target).execute(&mut self.0) {
             Ok(_) => {
-                info!("Project and Token deleted from DB for project: {} in BK: {}", &project_params.project_id, &project_params.bk);
+                info!(
+                    "Project and Token deleted from DB for project: {} in BK: {}",
+                    &project_params.project_id, &project_params.bk
+                );
             }
             Err(error) => {
                 warn!("Error deleting token: {}", error);
@@ -143,7 +155,10 @@ impl Db {
 
         match diesel::delete(target).execute(&mut self.0) {
             Ok(_) => {
-                info!("Token deleted from DB for user: {} in BK: {}", token_params.user_id, token_params.bk);
+                info!(
+                    "Token deleted from DB for user: {} in BK: {}",
+                    token_params.user_id, token_params.bk
+                );
             }
             Err(error) => {
                 warn!("Error deleting token: {}", error);
@@ -206,11 +221,11 @@ impl Db {
             Ok(true) => {
                 info!("Token available for user: {}", params.user_id);
                 Ok("true".to_string())
-            },
+            }
             Ok(false) => {
                 info!("No Token available for user: {}", params.user_id);
                 Ok("false".to_string())
-            },
+            }
             Err(_) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Error checking token availability.".to_string(),
@@ -235,7 +250,7 @@ impl Db {
             bk: params.bk.clone(),
             project_id: params.project_id.clone(),
         })
-        .await
+            .await
         {
             token_status_json["project_status"] = json_response.0["project_status"].clone();
         } else {
@@ -244,15 +259,13 @@ impl Db {
 
         let token_name_response = match self.get_token_name(&params) {
             Ok(Some(name)) => name,
-            Ok(None) =>{ 
+            Ok(None) => {
                 info!(
                     "Received status response for token. User ID: {}, BK: {}, Response: {}",
-                    params.user_id,
-                    params.bk,
-                    token_status_json["token_status"]
+                    params.user_id, params.bk, token_status_json["token_status"]
                 );
-                return Ok(Json(token_status_json))
-            },
+                return Ok(Json(token_status_json));
+            }
             Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string())),
         };
 
@@ -267,9 +280,7 @@ impl Db {
             Ok(_) => {
                 info!(
                     "Received status response for token. User ID: {}, BK: {}, Response: {}",
-                    params.user_id,
-                    params.bk,
-                    token_status_json["token_status"]
+                    params.user_id, params.bk, token_status_json["token_status"]
                 );
                 return Ok(Json(token_status_json));
             }
@@ -290,7 +301,7 @@ impl Db {
             token_name_response.clone(),
             token_value.clone(),
         )
-        .await
+            .await
         {
             token_status_json["token_status"] = json_response.0["token_status"].clone();
 
@@ -307,9 +318,7 @@ impl Db {
 
         info!(
             "Received status response for token. User ID: {}, BK: {}, Response: {}",
-            params.user_id,
-            params.bk,
-            token_status_json["token_status"]
+            params.user_id, params.bk, token_status_json["token_status"]
         );
 
         Ok(Json(token_status_json))
@@ -317,77 +326,59 @@ impl Db {
 
     pub async fn generate_user_script(&mut self, query: TokenParams) -> Result<String, String> {
         let tables_per_bridgehead_result = fetch_project_tables_names_request(query.clone()).await;
-
         match tables_per_bridgehead_result {
-            Ok(tables_per_bridgehead) => {
-                let mut script_lines = Vec::new();
-                let all_tables = tables_per_bridgehead
-                    .values()
-                    .flat_map(|tables| tables.iter())
-                    .collect::<HashSet<_>>();
-
-                for bridgehead in &query.bridgehead_ids {
-                    let records_result = tokens
-                        .filter(project_id.eq(&query.project_id))
-                        .filter(user_id.eq(&query.user_id))
-                        .filter(bk.eq(bridgehead))
-                        .order(id.desc())
-                        .select(TokenManager::as_select())
-                        .first::<TokenManager>(&mut self.0);
-
-                    match records_result {
-                        Ok(record) => {
-                            let token_decrypt = decrypt_data(
-                                record.token.clone(),
-                                &record.token_name.clone().as_bytes()[..16],
-                            );
-                            if let Some(tables) = tables_per_bridgehead.get(bridgehead) {
-                                let tables_set: HashSet<_> = tables.iter().collect();
-                                let missing_tables: HashSet<_> =
-                                    all_tables.difference(&tables_set).collect();
-                                if !missing_tables.is_empty() {
-                                    info!(
-                                        "Bridgehead {} is missing tables: {:?}",
-                                        bridgehead, missing_tables
-                                    );
-                                    script_lines.push(format!(
-                                        "\n # Tables not available for bridgehead '{}': {:?}",
-                                        bridgehead, missing_tables
-                                    ));
-                                }
-
-                                for table in tables {
-                                    let site_name =
-                                        record.bk.split('.').nth(1).expect("Valid app id");
-                                    script_lines.push(format!(
-                                        "builder$append(server='{}', url='https://{}/opal/', token='{}', table='{}', driver='OpalDriver')",
-                                        site_name, record.bk, token_decrypt, table.clone()
-                                    ));
-                                }
-                                script_lines.push("".to_string());
-                            }
-                        }
-                        Err(_) => {
-                            info!("Token not available for Bridgehead {}", bridgehead);
-                            script_lines.push(format!(
-                                "\n # Token not available for bridgehead '{}'",
-                                bridgehead
-                            ));
-                        }
-                    }
-                }
-
-                if !script_lines.is_empty() {
-                    let script = generate_r_script(script_lines);
-                    Ok(script)
-                } else {
-                    Ok("No records found for the given project and user.".into())
-                }
-            }
+            Ok(tables_per_bridgehead) => 
+                self.generate_user_script_using_tables(query, tables_per_bridgehead).await,
             Err(e) => {
                 error!("Error in fetch_project_tables_names_request: {:?}", e);
                 Err("Error obtaining table names.".into())
             }
         }
     }
+
+    async fn generate_user_script_using_tables(&mut self, query: TokenParams, bridgehead_tables: HashMap<String, HashSet<String>>) -> Result<String, String> {
+        let mut script_lines = Vec::new();
+        script_lines.push("\"SiteName\",\"URL\",\"ProjectName\",\"Token\"".to_string());
+        for bridgehead in &query.bridgehead_ids {
+            let records_result = tokens
+                .filter(project_id.eq(&query.project_id))
+                .filter(user_id.eq(&query.user_id))
+                .filter(bk.eq(bridgehead))
+                .order(id.desc())
+                .select(TokenManager::as_select())
+                .first::<TokenManager>(&mut self.0);
+
+            match records_result {
+                Ok(record) => {
+                    let token_decrypt = decrypt_data(
+                        record.token.clone(),
+                        &record.token_name.clone().as_bytes()[..16],
+                    );
+                    let site_name = record.bk.split('.').nth(1).expect("Valid app id");
+                    let tables_prefix = fetch_tables_prefix(&bridgehead_tables, bridgehead, &query.project_id);
+                    // TODO: Maybe in the future, it makes sense to pass record.bk instead of site_name as URL
+                    // e.g. "https://token-manager.dktk-test.broker.ccp-it.dktk.dkfz.de/opal/" instead of "https://dktk-test/opal/"
+                    // It looks more like an absolute beam path. In more complex beam contexts, it would avoid ambiguity.
+                    script_lines.push(format!("\"{}\",\"https://{}/opal/\",\"{}\",\"{}\"",
+                                              site_name, site_name, tables_prefix, token_decrypt));
+                }
+                Err(_) => {
+                    info!("Token not available for Bridgehead {}", bridgehead);
+                    script_lines.push(format!(
+                        "\n # Token not available for bridgehead '{}'",
+                        bridgehead
+                    ));
+                }
+            }
+        }
+        if !script_lines.is_empty() {
+            match generate_r_script(script_lines.join("\n")) {
+                Ok(script) => Ok(script), // Return the script if successful
+                Err(_) => Err("# Failed to generate user script due to template error.".to_string()),
+            }
+        } else {
+            Ok("No records found for the given project and user.".into())
+        }
+    }
+
 }
