@@ -32,6 +32,9 @@ pub struct Config {
     #[clap(env, default_value = "0123456789abcdef0123456789ABCDEF")]
     pub token_encrypt_key: String,
 
+    #[clap(long, env)]
+    pub auth_script_template_path: String,
+
     #[clap(long, env, default_value = "info")]
     pub rust_log: String,
 }

@@ -1,3 +1,5 @@
+use std::{fs, io};
+use std::collections::{HashMap, HashSet};
 use crate::config::CONFIG;
 use aes::Aes256;
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -29,29 +31,39 @@ pub fn decrypt_data(data: String, nonce: &[u8]) -> String {
     String::from_utf8(decrypted_token).unwrap()
 }
 
-pub fn generate_r_script(script_lines: Vec<String>) -> String {
-    let mut builder_script = String::from(
-        r#"library(DSI)
-library(DSOpal)
-library(dsBaseClient)
-set_config(use_proxy(url="http://beam-connect", port=8062))
-set_config( config( ssl_verifyhost = 0L, ssl_verifypeer = 0L ) )
+pub fn generate_r_script(script_config: String) -> Result<String, io::Error> {
+    // Read the auth script template from the file
+    let template_path = &CONFIG.auth_script_template_path;
+    let template_content = fs::read_to_string(template_path)?;
 
-builder <- DSI::newDSLoginBuilder(.silent = FALSE)
-"#,
-    );
+    // Replace the placeholder with the credentials CSV
+    let processed_content = template_content.replace("${CSV_CREDENTIALS_CONFIG}", script_config.as_str());
 
-    // Append each line to the script.
-    for line in script_lines {
-        builder_script.push_str(&line);
-        builder_script.push('\n');
-    }
-
-    // Finish the script with the login and assignment commands.
-    builder_script.push_str(
-        "logindata <- builder$build()
-connections <- DSI::datashield.login(logins = logindata, assign = TRUE, symbol = 'D')\n",
-    );
-
-    builder_script
+    // Return the processed content
+    Ok(processed_content)
 }
+
+pub fn fetch_tables_prefix(
+    bridgehead_tables: &HashMap<String, HashSet<String>>, bridgehead: &str, default: &str) -> String {
+    if let Some(set) = bridgehead_tables.get(bridgehead) {
+        let mut prefix: Option<String> = None;
+
+        for value in set {
+            if let Some((current_prefix, _)) = value.split_once('.') {
+                match &prefix {
+                    Some(existing_prefix) if existing_prefix != current_prefix => {
+                        return default.to_string();
+                    }
+                    None => {
+                        prefix = Some(current_prefix.to_string());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        prefix.unwrap_or_else(|| default.to_string())
+    } else {
+        default.to_string()
+    }
+}
+
